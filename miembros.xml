@@ -1,0 +1,20 @@
+<grupo>
+  <nombre>
+    ControlAutomataEstadosFinitos
+  </nombre>
+  <repositorio>
+    https://sescobb27@bitbucket.org/sescobb27/practicasistemasoperativos.git
+  </repositorio>
+  <miembro>
+    <nombre>Simón Escobar Benitez</nombre>
+    <codigo>201010005010</codigo>
+    <grupo>031</grupo>
+    <email>sescob27@eafit.edu.co</email>
+  </miembro>
+  <miembro>
+    <nombre>Mauricio José Ricardo Hoyos</nombre>
+    <codigo>200910012010</codigo>
+    <grupo>031</grupo>
+    <email>mricard2@eafit.edu.co</email>
+  </miembro>
+</grupo>
