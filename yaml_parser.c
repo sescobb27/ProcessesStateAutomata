@@ -36,7 +36,7 @@ cc `pkg-config --libs --cflags glib-2.0` -o parser yaml_parser.c -lyaml
 
 void startSequence();
 void startMapping();
-void getScalar(yaml_parser_t parser, yaml_event_t event;);
+void getScalar(yaml_parser_t parser, yaml_event_t event);
 
 struct flujo_nodos{
     char *entrada;
@@ -110,37 +110,6 @@ getScalar(yaml_parser_t parser, yaml_event_t event)
       yaml_event_delete( &event );
   }
 }
-
-struct flujo_nodos{
-    char *entrada;
-    char sig_estado;
-};
-
-struct transicion_nodos { 
-    GSList* flujo_nodos;
-};
-struct nodo_automata{
-    char id;
-    GSList* transicion_nodos;
-};
-struct automata_desc{
-    char *nombre;
-    char *descripcion;
-    char *afabeto;
-    char *estados;
-    char *inicio;
-    char *final;
-    GSList* nodo_automata;
-};
-
-typedef struct automata_desc automata;
-typedef struct automata_desc* pautomata;
-typedef struct nodo_automata nodo;
-typedef struct nodo_automata* pnodo;
-typedef struct flujo_nodos flujo;
-typedef struct flujo_nodos* pflujo;
-typedef struct transicion_nodos transicion;
-typedef struct transicion_nodos* ptransicion;
 
 void
 startParsingYamlFile(yaml_parser_t *parser)
