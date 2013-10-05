@@ -15,7 +15,7 @@
 #include "yaml.h"
 // definido en yaml.h por lo que no son necesarios
 // #include "stdio.h"
-// #include "stdlib.h"
+#include "stdlib.h"
 // #include "string.h"
 #include "unistd.h"
 #include "glib.h"
@@ -32,6 +32,7 @@
 #define FIN_YAML 0
 #define NO_FIN_YAML 1
 #define MAX_WORD_LENGTH 50
+#define MAX_AUTOMATAS 20
 
 /*
   #define AUTOMATA 0
@@ -64,20 +65,14 @@ enum tags {
 
 typedef enum tags tag;
 
-
-
-struct flujo_nodos{
-    char *entrada;
-    char sig_estado;
-};
-
 struct transicion_nodos { 
-    GSList* flujo_nodos;
+    char *entrada;
+    char *sig_estado;
 };
 
 struct nodo_automata{
-    char id;
-    GSList* transicion_nodos;
+    char *id;
+    GSList* transiciones;
 };
 
 struct automata_desc{
@@ -90,23 +85,24 @@ struct automata_desc{
     char *estadoinicial;
     char **final;
     int sizeFinal;
-    GSList* nodos_automata;
+    GSList* nodos;
 };
 
 typedef struct automata_desc automata;
 typedef struct automata_desc* p_type_automata;
 typedef struct nodo_automata nodo;
 typedef struct nodo_automata* p_type_nodo;
-typedef struct flujo_nodos flujo;
-typedef struct flujo_nodos* p_type_flujo;
 typedef struct transicion_nodos transicion;
 typedef struct transicion_nodos* p_type_transicion;
+
+p_type_automata allAutomatas[MAX_AUTOMATAS];
 
 // definicion de metodos
 void startSequence();
 void startMapping();
-// void parseDescriptionSection(yaml_parser_t parser, yaml_event_t event);
-void parseDescriptionSection(yaml_event_t *event, yaml_parser_t *parser);
+void parseAutomata(yaml_event_t *event, yaml_parser_t *parser);
+void parseTransitions(yaml_parser_t *parser, yaml_event_t *event, p_type_nodo *pnodo);
+void parseNodesSection(yaml_parser_t *parser, yaml_event_t *event, p_type_automata *pautomata);
 // el ... significa que resive atributos dinamicos
 // void parseSequenceSection(yaml_event_t *event, yaml_parser_t *parser, int kind, ...);
 void parseSequenceSection(yaml_event_t *event, yaml_parser_t *parser, int kind, p_type_automata *pautomata);
@@ -198,8 +194,54 @@ void initStringArray(p_type_automata *pautomata, int arrayLength, int wordLength
   int i;
   for (i = 0; i < arrayLength; ++i) {
     (*pautomata)->alfabeto[i] = (char*) malloc( wordLength * sizeof( char ) );
+    memset((*pautomata)->alfabeto[i], '\0', MAX_WORD_LENGTH);
+    /*                      */
     (*pautomata)->estados[i] = (char*) malloc( wordLength * sizeof( char ) );
+    memset((*pautomata)->estados[i], '\0', MAX_WORD_LENGTH);
+    /*                      */
     (*pautomata)->final[i] = (char*) malloc( wordLength * sizeof( char ) );
+    memset((*pautomata)->final[i], '\0', MAX_WORD_LENGTH);
+  }
+}
+
+void parseTransitions(yaml_parser_t *parser, yaml_event_t *event, p_type_nodo *pnodo){
+  next(event, parser);
+  char *data = (char *)malloc(sizeof(char) * MAX_WORD_LENGTH);
+  strcpy(data, event->data.scalar.value);
+  if ( strcmp( data, diccionario[TRANS]) != 0 )
+      exit(EXIT_FAILURE);
+  while ( strcmp( data, diccionario[NODE]) != 0 ) {
+    p_type_transicion ptransicion = ( p_type_transicion) malloc( sizeof( transicion ) );
+    ptransicion->entrada = malloc( sizeof(char) * MAX_WORD_LENGTH );
+    ptransicion->sig_estado = malloc( sizeof(char) * MAX_WORD_LENGTH );
+    // pedir proximo evento y asignarselo a la entrada
+    next(event, parser);
+    strcpy(data, event->data.scalar.value);
+    strcpy( ptransicion->entrada, data );
+    // pedir proximo evento y asignarselo a el siguiendo estado
+    next(event, parser);
+    strcpy(data, event->data.scalar.value);
+    strcpy( ptransicion->sig_estado, data );
+    (*pnodo)->transiciones = g_slist_append( (*pnodo)->transiciones, ptransicion );
+  }
+}
+
+void parseNodesSection(yaml_parser_t *parser, yaml_event_t *event, p_type_automata *pautomata){
+  next(event, parser);
+  char *data = (char *)malloc(sizeof(char) * MAX_WORD_LENGTH);
+  strcpy(data, event->data.scalar.value);
+  if ( strcmp(data, diccionario[DELTA]) == 0 ) {
+        next(event, parser);
+        strcpy(data, event->data.scalar.value);
+        if ( strcmp( data, diccionario[NODE]) != 0 )
+            exit(EXIT_FAILURE);
+        while( strcmp( data, diccionario[NODE]) == 0){
+            next(event, parser);
+            p_type_nodo pnodo = (p_type_nodo) malloc( sizeof( nodo ) );
+            pnodo->id = (char *) malloc( sizeof(char) * MAX_WORD_LENGTH );
+            strcpy(pnodo->id, event->data.scalar.value);
+            parseTransitions(parser, event, &pnodo);
+        }
   }
 }
 
@@ -278,7 +320,7 @@ void parseSequenceSection(yaml_event_t *event, yaml_parser_t *parser, int kind, 
     // va_end ( args );
 }
 
-void parseDescriptionSection(yaml_event_t *event, yaml_parser_t *parser) {
+void parseAutomata(yaml_event_t *event, yaml_parser_t *parser) {
   char *data = (char *)malloc(sizeof(char) * MAX_WORD_LENGTH);
   strcpy(data, event->data.scalar.value);
   p_type_automata pautomata = (p_type_automata)  malloc( sizeof( automata ) );
@@ -364,22 +406,24 @@ void parseDescriptionSection(yaml_event_t *event, yaml_parser_t *parser) {
   strcpy(data, event->data.scalar.value);
   fprintf(stdout, "FINAL\n");
   if (strcmp( data, diccionario[FINAL] ) == 0) {
-    /* code */
-    next(event, parser);
-    switch (event->type)
-    {
-      /* code */
-      case YAML_SEQUENCE_START_EVENT:
-          parseSequenceSection(event, parser, FINAL, &pautomata);
-          if (event->type != YAML_SEQUENCE_END_EVENT)
-            exit(EXIT_FAILURE);
-          break;
-    }
+        /* code */
+        next(event, parser);
+        switch (event->type)
+        {
+          /* code */
+          case YAML_SEQUENCE_START_EVENT:
+              parseSequenceSection(event, parser, FINAL, &pautomata);
+              if (event->type != YAML_SEQUENCE_END_EVENT)
+                exit(EXIT_FAILURE);
+              break;
+        }
   }
   fprintf(stdout, "============================================\n");
   fprintf(stdout, "Before print\n");
   automata_descPrinter(pautomata);
   fprintf(stdout, "After print\n");
+  fprintf(stdout, "============================================\n");
+  parseNodesSection(parser, event, &pautomata);
 }
 
 void startParsingYamlFile(yaml_parser_t *parser) {
@@ -436,7 +480,7 @@ void startParsingYamlFile(yaml_parser_t *parser) {
               break;
           case YAML_SCALAR_EVENT:
               printf("YAML VALUE: %s\n", event.data.scalar.value);
-              parseDescriptionSection( &event, parser );
+              parseAutomata( &event, parser );
               break;
       }
       deleteEvent(&event);
