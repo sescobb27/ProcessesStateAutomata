@@ -103,7 +103,7 @@ typedef struct transicion_nodos* p_type_transicion;
 // definicion de metodos
 void startSequence();
 void startMapping();
-void parseAutomata(yaml_event_t *event, yaml_parser_t *parser, p_type_automata pautomata);
+p_type_automata parseAutomata(yaml_event_t *event, yaml_parser_t *parser);
 void parseTransitions(yaml_parser_t *parser, yaml_event_t *event, p_type_nodo *pnodo);
 void parseNodesSection(yaml_parser_t *parser, yaml_event_t *event, p_type_automata *pautomata);
 // el ... significa que resive atributos dinamicos
@@ -237,8 +237,8 @@ void parseTransitions(yaml_parser_t *parser, yaml_event_t *event, p_type_nodo *p
     // exit(EXIT_FAILURE);
     fprintf(stdout, "Parece ser un estado final\n0 Transiciones\n");
     next(event, parser);
-    if (event->type == YAML_MAPPING_END_EVENT)
-      next(event, parser);
+    // if (event->type == YAML_MAPPING_END_EVENT)
+    //   next(event, parser);
     return;
   }
   next(event, parser);
@@ -314,18 +314,9 @@ void parseNodesSection(yaml_parser_t *parser, yaml_event_t *event, p_type_automa
                         if( event->type == YAML_MAPPING_END_EVENT){
                           next( event, parser );
                         }
-                  }/*else {
-                          // terminar de cerrar todo para empezar con el siguiente automata
-                          if( event->type == YAML_MAPPING_END_EVENT){
-                                next(event, parser);
-                                if( event->type == YAML_SEQUENCE_END_EVENT){
-                                    next( event, parser );
-                                }
-                         }
-                  }*/
+                  }
             }
       }
-       next( event, parser );
   }
 }
 
@@ -404,10 +395,10 @@ void parseSequenceSection(yaml_event_t *event, yaml_parser_t *parser, int kind, 
     // va_end ( args );
 }
 
-void parseAutomata(yaml_event_t *event, yaml_parser_t *parser, p_type_automata pautomata) {
+p_type_automata parseAutomata(yaml_event_t *event, yaml_parser_t *parser) {
   char *data = (char *)malloc(sizeof(char) * MAX_WORD_LENGTH);
   strcpy(data, event->data.scalar.value);
-  pautomata = (p_type_automata)  malloc( sizeof( automata ) );
+  p_type_automata pautomata = (p_type_automata)  malloc( sizeof( automata ) );
   // pautomata->alfabeto = (char **)malloc(sizeof(char)*STATES_NUMBER);
   // pautomata->estados = (char **)malloc(sizeof(char)*STATES_NUMBER);
   // pautomata->final = (char **)malloc(sizeof(char)*STATES_NUMBER);
@@ -509,7 +500,7 @@ void parseAutomata(yaml_event_t *event, yaml_parser_t *parser, p_type_automata p
   nodes_printer(pautomata);
   fprintf(stdout, "Nodes Section After print\n");
   fprintf(stdout, "============================================\n");
-  next(event, parser);
+  return pautomata;
 }
 
 void startParsingYamlFile(yaml_parser_t *parser) {
@@ -531,37 +522,13 @@ void startParsingYamlFile(yaml_parser_t *parser) {
       printf("EVENT TYPE: %d\n",(event).type);
       switch((event).type)
       {
-          case YAML_STREAM_START_EVENT:
-              // printf("STREAM START: %s\n",event.data.scalar.value );
-              break;
-          case YAML_STREAM_END_EVENT:
-              // printf("STREAM END: %s\n",event.data.scalar.value );
-              break;
-          case YAML_DOCUMENT_START_EVENT:
-              // printf("DOCUMENT START: %s\n",event.data.scalar.value );
-              break;
-          case YAML_DOCUMENT_END_EVENT:
-              // printf("DOCUMENT END: %s\n",event.data.scalar.value );
-              break;
-          case YAML_SEQUENCE_START_EVENT:
-              // printf("SEQUENCE START: %s\n",event.data.mapping_start.anchor );
-              break;
-          case YAML_SEQUENCE_END_EVENT:
-              // printf("SEQUENCE END: %s\n",event.data.mapping_start.anchor );
-              break;
-          case YAML_MAPPING_START_EVENT:
-              // printf("MAPPING START: %s\n",event.data.mapping_start.anchor );
-              break;
-          case YAML_MAPPING_END_EVENT:
-              // printf("MAPPING END: %s\n",event.data.mapping_start.anchor );
-              break;
           case YAML_SCALAR_EVENT:
               printf("YAML VALUE: %s\n", event.data.scalar.value);
               if (pautomata == NULL){
-                  parseAutomata( &event, parser, primer_pautomata );
+                  primer_pautomata = parseAutomata( &event, parser );
                   pautomata = primer_pautomata;
               }else {
-                  parseAutomata( &event, parser, pautomata->next );
+                  pautomata->next = parseAutomata( &event, parser );
                   pautomata = pautomata->next;
               }
               break;
@@ -572,6 +539,7 @@ void startParsingYamlFile(yaml_parser_t *parser) {
       //     yaml_event_delete( &event );
       // }
   } while ((event).type != YAML_STREAM_END_TOKEN);
+
   yaml_event_delete( &event );
 }
 
