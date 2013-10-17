@@ -67,22 +67,22 @@ typedef struct flujo_nodos* p_type_flujo;
 typedef struct transicion_nodos transicion;
 typedef struct transicion_nodos* p_type_transicion;
 
-void parseDescriptionSection( YAML::Node file ){
+void parseDescriptionSection( YAML::Node *file ){
     p_type_automata pautomata = ( p_type_automata ) malloc( sizeof( automata ) );
     // std::cout << file;
-    std::cout << file["automata"].as<std::string>();
+    std::cout << (*file)["automata"].as<std::string>();
     printf("Entro 1\n");
-    const std::string name= file["automata"].as<std::string>();
+    const std::string name= (*file)["automata"].as<std::string>();
     printf("Entro 2\n");
-    pautomata->descripcion = file["description"].as<std::string>();
+    pautomata->descripcion = (*file)["description"].as<std::string>();
     printf("Entro 3\n");
-    pautomata->alfabeto = file["alpha"].as< std::list<std::string> >();
+    pautomata->alfabeto = (*file)["alpha"].as< std::list<std::string> >();
     printf("Entro 4\n");
-    pautomata->estados = file["states"].as< std::list<std::string> >();
+    pautomata->estados = (*file)["states"].as< std::list<std::string> >();
     printf("Entro 5\n");
-    pautomata->estadoinicial = file["start"].as<std::string>();
+    pautomata->estadoinicial = (*file)["start"].as<std::string>();
     printf("Entro 6\n");
-    pautomata->final = file["final"].as<std::list<std::string> >();
+    pautomata->final = (*file)["final"].as<std::list<std::string> >();
     std::cout << "Nombre: \n" << pautomata->nombre;
     std::cout << "Descripcion: \n" << pautomata->descripcion;
     std::cout << "Alfabeto: \n";
@@ -98,10 +98,8 @@ int main(int argc, char const *argv[]){
     fprintf(stdout, "There is no file to parse, try again\n");
     return SYSTEM_ERROR;
   }
-  FILE *yaml_file = fopen( argv[1], "r" );
-  YAML::Node file = YAML::Load(argv[1]);
-  // YAML::Node file = YAML::LoadFile(argv[1]);
-  parseDescriptionSection( file );
+  YAML::Node file = YAML::LoadFile(argv[1]);
+  parseDescriptionSection( &file );
   std::ofstream fout(argv[1]);
   fout << file;
   return SYSTEM_SUCCESS;
