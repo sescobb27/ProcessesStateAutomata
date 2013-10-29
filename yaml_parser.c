@@ -12,7 +12,9 @@
 */
 #include "yaml.h"
 // definido en yaml.h por lo que no son necesarios
-#include "stdio.h"
+// #include "stdio.h"
+#include <stdio.h>
+#include <stdio_ext.h>
 #include "stdlib.h"
 // #include "string.h"
 #include <unistd.h>
@@ -107,6 +109,7 @@ int deleteEvent(yaml_event_t *event);
 int yamlParser(yaml_event_t *event, yaml_parser_t *parser);
 void next(yaml_event_t *event, yaml_parser_t *parser);
 void crearHijos(p_type_automata pautomata);
+void sendCommand(char *command, char *msg, p_type_automata pautomata);
 
 int **fd_padre;
 
@@ -173,10 +176,12 @@ int yamlParser(yaml_event_t *event, yaml_parser_t *parser){
   if( !yaml_parser_parse(parser, event) )
   {
      fprintf(stderr,"Parser Error %d\n", (*parser).error);
+     fprintf(stderr, "Paser Problem %s\n", (*parser).problem);
      if ((*parser).error == 4) {
         fprintf(stderr, "DOCUMENT_END\n");
      }
-     exit(EXIT_FAILURE);
+     kill( 0, SIGKILL );
+     // exit(EXIT_FAILURE);
   }
   return 1;
 }
@@ -231,7 +236,7 @@ char* getCommand( char* data ){
   }else if ( strcmp(data, diccionario[SEND]) == 0) {
     return diccionario[SEND];
   } else if ( strcmp(data, diccionario[STOP]) == 0) {
-    return diccionario[STOP];
+    sendCommand ( diccionario[STOP], NULL, NULL);
   } else {
     fprintf(stderr, "Error on command\n");
     return NULL;
@@ -240,10 +245,26 @@ char* getCommand( char* data ){
 
 void sendCommand(char *command, char *msg, p_type_automata pautomata) {
   if ( strcmp(command, diccionario[INFO]) == 0) {
+    p_type_automata aux = pautomata;
+    if ( strlen(msg) == 0 ) {
+      write(
+        //fd_padre[nodos/*% aux->sizeEstados*/][1],
+        aux->primer_nodo->fd[1],
+        msg,
+        0
+      );
+      return;
+    }
+    for (; aux; aux = aux->next) {
+      if ( strcmp( aux->nombre, msg ) == 0 ) {
+
+      }
+    }
   } else if ( strcmp(command, diccionario[SEND]) == 0) {
     p_type_automata aux = NULL;
     int nodos = 0;
-    close(0);
+    // int old_fd = dup(0);
+    // close(0);
     for (aux = pautomata; aux; aux = aux->next) {
       // close(fd_padre[nodos % aux->sizeEstados][0]);
       // close(fd_padre[nodos % aux->sizeEstados][1]);
@@ -254,6 +275,7 @@ void sendCommand(char *command, char *msg, p_type_automata pautomata) {
         strlen(msg)
       );
       close(fd_padre[nodos /*% aux->sizeEstados*/][1]);
+      // dup2(0, old_fd);
       nodos += aux->sizeEstados;
     }
   } else if ( strcmp(command, diccionario[STOP]) == 0) {
@@ -268,18 +290,24 @@ void startListenUserInput( p_type_automata pautomata) {
   char *data, *command, *msg;
   data = (char*) malloc(sizeof(char) * MAX_WORD_LENGTH);
   memset(data, '\0', MAX_WORD_LENGTH);
-  command = (char*)
-  malloc(sizeof(char) * MAX_WORD_LENGTH);
-  memset(command, '\0', MAX_WORD_LENGTH);   msg = (char*) malloc(sizeof(char) * MAX_WORD_LENGTH);
+  command = (char*) malloc(sizeof(char) * MAX_WORD_LENGTH);
+  memset(command, '\0', MAX_WORD_LENGTH);
+  msg = (char*) malloc(sizeof(char) * MAX_WORD_LENGTH);
   memset( msg, '\0', MAX_WORD_LENGTH );
-  while( 1 ){
+  while( 1 ) {
     if ( !yaml_parser_initialize( &parser ) ){
       fprintf(stderr, "Unable to initialize yaml parser\n");
       exit(EXIT_FAILURE);
     }
     fprintf(stdout, "Entre mensaje:\n\t$: ");
+    // fflush(stdin);
+    // __fpurge(stdin);
+    // fgets(msg, MAX_WORD_LENGTH, stdin);
     gets(msg);
-    size_t size = strlen(msg);
+    size_t size = strlen(msg) - 1;
+    if (msg[size] == '\n'){
+      msg[size] = '\0';
+    }
     yaml_parser_set_input_string( &parser, msg, size );
     if (yamlParser( &event,&parser )) {
       while (event.type != YAML_STREAM_END_EVENT) {
@@ -297,10 +325,6 @@ void startListenUserInput( p_type_automata pautomata) {
                 fprintf(stderr, "Command Not Found\n");
                 break;
               }
-              if (strcmp (command, diccionario[STOP]) == 0) {
-                fprintf(stdout, "Sending: %s\n", command);
-                sendCommand ( command, NULL, NULL);
-              }
               next(&event,&parser);
            }
          } else if ( strcmp( data, diccionario[MSG] ) == 0 ){
@@ -317,6 +341,7 @@ void startListenUserInput( p_type_automata pautomata) {
       }
     }
     yaml_parser_delete( &parser );
+    // msg[0] = '\0';
   }
 }
 
@@ -337,7 +362,10 @@ void controladorProcesos(p_type_nodo *pnodo, pid_t hijo, char* nombre_automata/*
       // start listen for events
 
       while (read((*pnodo)->fd[0], buffer, MAX_WORD_LENGTH) > 0) {
-        printf("in Process %s in Automata[%s] msg was %s\n", (*pnodo)->id, nombre_automata, buffer);
+        fprintf(stdout, "in Process %s in Automata[%s] msg was %s\n", (*pnodo)->id, nombre_automata, buffer);
+        if ( strcmp( buffer, diccionario[INFO] ) == 0 ) {
+
+        }
       }
     }
 }
@@ -667,14 +695,14 @@ p_type_automata startParsingYamlFile(yaml_parser_t *parser) {
       // yamlParser(event, *parser);
       if( !yaml_parser_parse(parser, &event) )
       {
-         printf("Parser Error %d\n", (*parser).error);
+         fprintf(stderr, "Parser Error %d\n", (*parser).error);
          exit(EXIT_FAILURE);
       }
       printf("EVENT TYPE: %d\n",(event).type);
       switch((event).type)
       {
           case YAML_SCALAR_EVENT:
-              printf("YAML VALUE: %s\n", event.data.scalar.value);
+              fprintf(stdout, "YAML VALUE: %s\n", event.data.scalar.value);
               if (pautomata == NULL){
                   primer_pautomata = parseAutomata( &event, parser );
                   pautomata = primer_pautomata;
