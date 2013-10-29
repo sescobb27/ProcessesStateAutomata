@@ -246,18 +246,12 @@ char* getCommand( char* data ){
 void sendCommand(char *command, char *msg, p_type_automata pautomata) {
   if ( strcmp(command, diccionario[INFO]) == 0) {
     p_type_automata aux = pautomata;
-    if ( strlen(msg) == 0 ) {
-      write(
-        //fd_padre[nodos/*% aux->sizeEstados*/][1],
-        aux->primer_nodo->fd[1],
-        msg,
-        0
-      );
-      return;
-    }
     for (; aux; aux = aux->next) {
-      if ( strcmp( aux->nombre, msg ) == 0 ) {
-
+      if ( strlen(msg) == 0 ) {
+        write( aux->primer_nodo->fd[1], diccionario[INFO], strlen( diccionario[INFO] ) );
+      } else if ( strcmp( aux->nombre, msg ) == 0 ) {
+        write( aux->primer_nodo->fd[1], diccionario[INFO], strlen( diccionario[INFO] ) );
+        return;
       }
     }
   } else if ( strcmp(command, diccionario[SEND]) == 0) {
@@ -354,18 +348,21 @@ void controladorProcesos(p_type_nodo *pnodo, pid_t hijo, char* nombre_automata/*
     while(1)
     {
       // close stdin read
-      close(0);
+      // close(0);
       // coja el pipe de entrada del padre y pegueselo al proceso
-      dup2(0, (*pnodo)->fd[0]);
+      // dup2(0, (*pnodo)->fd[0]);
       // cierre la salida del pipe write
-      close((*pnodo)->fd[1]);
+      // close((*pnodo)->fd[1]);
       // start listen for events
 
       while (read((*pnodo)->fd[0], buffer, MAX_WORD_LENGTH) > 0) {
         fprintf(stdout, "in Process %s in Automata[%s] msg was %s\n", (*pnodo)->id, nombre_automata, buffer);
-        if ( strcmp( buffer, diccionario[INFO] ) == 0 ) {
-
-        }
+        // if ( strcmp( buffer, diccionario[INFO]  ) == 0 ) {
+        //   if ( (*pnodo)->next ) {
+        //     dup2(  (*pnodo)->next->fd[0], 0);
+        //     write( (*pnodo)->next->fd[1], diccionario[INFO], strlen( diccionario[INFO] ));
+        //   }
+        // }
       }
     }
 }
