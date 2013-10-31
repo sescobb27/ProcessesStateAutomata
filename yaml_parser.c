@@ -255,11 +255,14 @@ void yamlCodeStringFormater ( int codterm, char *msg, char *recog, char *rest ) 
 }
 
 void* controladorHiloLectura(void *args) {
-  p_type_automata *pautomata = (p_type_automata *) args;
+  p_type_automata pautomata = (p_type_automata) args;
+  // automata_descPrinter( pautomata );
   char *buffer = (char*) malloc( sizeof(char) * MAX_WORD_LENGTH );
   memset( buffer, '\0', MAX_WORD_LENGTH);
   while ( 1 ) {
-    while ( read((*pautomata)->pipe_to_father[0], buffer, MAX_WORD_LENGTH) > 0 ) {
+    // fprintf(stdout, "Waiting for childs\n");
+    while ( read( pautomata->pipe_to_father[0], buffer, MAX_WORD_LENGTH ) > 0 ) {
+      fprintf(stdout, "%s\n", buffer);
     }
   }
 }
@@ -306,8 +309,6 @@ void startListenUserInput( p_type_automata pautomata) {
       exit(EXIT_FAILURE);
     }
     fprintf(stdout, "Entre mensaje:\n\t$: ");
-    // fflush(stdin);
-    // __fpurge(stdin);
     fgets(msg, MAX_WORD_LENGTH, stdin);
     // gets(msg);
     size_t size = strlen(msg) - 1;
@@ -347,11 +348,10 @@ void startListenUserInput( p_type_automata pautomata) {
       }
     }
     yaml_parser_delete( &parser );
-    // msg[0] = '\0';
   }
 }
 
-void controladorProcesos(p_type_nodo *pnodo, pid_t hijo, char* nombre_automata/*, int *fd*/) {
+void controladorProcesos(p_type_nodo *pnodo, pid_t hijo, char* nombre_automata, char **estados_finales, int size_finales/*, int *fd*/) {
     // fprintf(stdout, "Ejecutando el Metodo del hijo: con id => %d\n",getpid());
     // fprintf(stdout, "Ejecutando el Metodo del hijo enviado: con id => %d\n",hijo);
     // fprintf(stdout, "%d: Nodo: %s Con automata: %s\n", hijo, (*pnodo)->id, nombre_automata);
@@ -367,7 +367,7 @@ void controladorProcesos(p_type_nodo *pnodo, pid_t hijo, char* nombre_automata/*
         fprintf(stdout, "in Process %s in Automata[%s] msg was %s\n", (*pnodo)->id, nombre_automata, buffer);
         if ( strcmp( buffer, diccionario[INFO]  ) == 0 ) {
             if ( (*pnodo)->next ) {
-                fprintf(stdout, "writing from child\n");
+                // fprintf(stdout, "writing from child\n");
                 write( (*pnodo)->next->fd[1], diccionario[INFO], strlen( diccionario[INFO] ));
             }
         } else {
@@ -410,7 +410,7 @@ void controladorProcesos(p_type_nodo *pnodo, pid_t hijo, char* nombre_automata/*
                   }
               }
           }
-          fprintf(stdout, "->1 in child{ recog: %s, rest: %s }\n", recog, data);
+          // fprintf(stdout, "->1 in child{ recog: %s, rest: %s }\n", recog, data);
           p_type_transicion aux = (*pnodo)->primer_transicion;
           for(; aux; aux = aux->next) {
               if ( memcmp(aux->entrada, data, strlen(aux->entrada) ) == 0 ) {
@@ -420,7 +420,7 @@ void controladorProcesos(p_type_nodo *pnodo, pid_t hijo, char* nombre_automata/*
                   data+= strlen(aux->entrada);
                   // printf("estado data%s\n", data );
                   yamlStringFormater(_msg, recog, data);
-                  fprintf(stdout, "%s\n",_msg);
+                  // fprintf(stdout, "%s\n",_msg);
                   p_type_nodo pnodo_aux = (*pnodo)->primer_nodo;
                   for (; pnodo_aux; pnodo_aux = pnodo_aux->next) {
                       if ( strcmp( aux->sig_estado, pnodo_aux->id) == 0 ) {
@@ -433,6 +433,12 @@ void controladorProcesos(p_type_nodo *pnodo, pid_t hijo, char* nombre_automata/*
               }
           }
           if ( !send ) {
+            int i = 0;
+            for (i; i < size_finales; ++i) {
+              if ( strcmp( estados_finales[i], pnodo->id ) == 0 && strlen(data) == 0 ) {
+                yamlCodeStringFormater(0, _msg, recog, data);
+              }
+            }
             yamlCodeStringFormater(1, _msg, recog, data);
             write( (*pnodo)->pipe_to_father[1], _msg, strlen(_msg) + 1 );
           }
@@ -441,7 +447,7 @@ void controladorProcesos(p_type_nodo *pnodo, pid_t hijo, char* nombre_automata/*
     }
 }
 
-int controladorNodos(p_type_nodo pnodo, char* nombre_automata, int nodo) {
+int controladorNodos(p_type_nodo pnodo, char* nombre_automata, int nodo, char **estados_finales, int size_finales) {
   p_type_nodo aux = NULL;
   for( aux = pnodo; aux; aux = aux->next) {
     if (pipe(fd_padre[nodo]) == -1) {
@@ -455,7 +461,7 @@ int controladorNodos(p_type_nodo pnodo, char* nombre_automata, int nodo) {
     if ( fork() == 0 ) {
       // dentro del proceso hijo
       // fprintf(stdout, "Ejecutando el hijo: con id => %d\n",getpid());
-      controladorProcesos( &aux, getpid(), nombre_automata/*, fd_padre[nodo] */);
+      controladorProcesos( &aux, getpid(), nombre_automata, estados_finales, size_finales/*, fd_padre[nodo] */);
       break;
     }else{
       // dentro del padre
@@ -473,10 +479,10 @@ void crearHijos( p_type_automata pautomata) {
     fd_padre[i] = (int*) malloc( sizeof(int) * 2);
   }
   int nodo = 0;
-  for (aux = pautomata; aux; aux = aux->next) {
+  for (aux = (pautomata); aux; aux = aux->next) {
     // pthread_t hilo_lectura;
-    pthread_create(&(aux->hilo_lectura), NULL, controladorHiloLectura, (void *) &aux);
-    nodo = controladorNodos(aux->primer_nodo, aux->nombre, nodo);
+    pthread_create(&(aux->hilo_lectura), NULL, controladorHiloLectura, (void *) aux);
+    nodo = controladorNodos(aux->primer_nodo, aux->nombre, nodo, aux->final, aux->sizeFinal);
   }
   startListenUserInput( pautomata );
 }
@@ -557,6 +563,7 @@ void parseNodesSection(yaml_parser_t *parser, yaml_event_t *event, p_type_automa
                   pnodo = (p_type_nodo) malloc( sizeof( nodo ) );
                   pnodo->id = (char *) malloc( sizeof(char) * MAX_WORD_LENGTH );
                   strcpy(pnodo->id, event->data.scalar.value);
+                  pnodo->pipe_to_father = (int*) malloc( sizeof(int) * 2);
                   pnodo->pipe_to_father = (*pautomata)->pipe_to_father;
                   parseTransitions(parser, event, &pnodo);
                   if( (*pautomata)->nodos == NULL){
@@ -751,7 +758,10 @@ p_type_automata parseAutomata(yaml_event_t *event, yaml_parser_t *parser) {
         }
   }
   pautomata->pipe_to_father = (int*) malloc( sizeof(int) * 2);
-  pipe(pautomata->pipe_to_father);
+   if ( pipe(pautomata->pipe_to_father) == -1 ) {
+    perror("Error creating pipe_to_father");
+    exit(EXIT_FAILURE);
+   }
   parseNodesSection(parser, event, &pautomata);
   return pautomata;
 }
