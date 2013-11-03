@@ -11,12 +11,9 @@
   sudo apt-get install libglib2.0-dev
 */
 #include "yaml.h"
-// definido en yaml.h por lo que no son necesarios
-// #include "stdio.h"
 #include <pthread.h>
 #include <stdio.h>
 #include "stdlib.h"
-// #include "string.h"
 #include <unistd.h>
 #include <sys/types.h>
 #include <errno.h>
@@ -33,7 +30,6 @@
 #define FIN_YAML 0
 #define NO_FIN_YAML 1
 #define MAX_WORD_LENGTH 50
-#define MAX_RESPONE_LENGTH 1024
 #define MAX_AUTOMATAS 20
   // FORMATS
 #define MSG_FORMAT "{ recog: %s, rest: %s }"
@@ -111,8 +107,6 @@ typedef struct transicion_nodos* p_type_transicion;
 p_type_automata parseAutomata(yaml_event_t *event, yaml_parser_t *parser);
 void parseTransitions(yaml_parser_t *parser, yaml_event_t *event, p_type_nodo *pnodo);
 void parseNodesSection(yaml_parser_t *parser, yaml_event_t *event, p_type_automata *pautomata);
-// el ... significa que resive atributos dinamicos
-// void parseSequenceSection(yaml_event_t *event, yaml_parser_t *parser, int kind, ...);
 void parseSequenceSection(yaml_event_t *event, yaml_parser_t *parser, int kind, p_type_automata *pautomata);
 int deleteEvent(yaml_event_t *event);
 int yamlParser(yaml_event_t *event, yaml_parser_t *parser);
@@ -236,36 +230,32 @@ void printInfoMsg(char *automata_name) {
 
 void* controladorHiloLectura(void *args) {
   p_type_automata pautomata = (p_type_automata) args;
-  // automata_descPrinter( pautomata );
-  char *buffer = (char*) malloc( sizeof(char) * MAX_RESPONE_LENGTH );
-  memset( buffer, '\0', MAX_RESPONE_LENGTH);
+  char *buffer = (char*) malloc( sizeof(char) * MAX_WORD_LENGTH );
+  memset( buffer, '\0', MAX_WORD_LENGTH);
   while ( 1 ) {
-    while ( read( pautomata->pipe_to_father[0], buffer, MAX_RESPONE_LENGTH ) > 0 ) {
+    while ( read( pautomata->pipe_to_father[0], buffer, MAX_WORD_LENGTH ) > 0 ) {
       fprintf(stdout, "%s\n", buffer);
     }
   }
 }
 
 void sendCommand(char *command, char *msg, p_type_automata pautomata) {
-  if ( strcmp(command, diccionario[INFO]) == 0) {
-    p_type_automata aux = pautomata;
+  p_type_automata aux = pautomata;
+  char *_msg = (char*) malloc( sizeof(msg) * MAX_WORD_LENGTH );
+  memset(_msg, '\0', MAX_WORD_LENGTH);
+  if ( strcmp(command, diccionario[INFO] ) == 0) {
     p_type_nodo _n_aux;
-    char *info_msg = (char*) malloc( sizeof(char) * MAX_WORD_LENGTH );
-    memset(info_msg, '\0', MAX_WORD_LENGTH);
     for (; aux; aux = aux->next) {
       if ( strlen(msg) == 0){
-        nodes_printer(aux, info_msg);
+        nodes_printer(aux, _msg);
       } else if ( strcmp(msg, aux->nombre) == 0) {
-        nodes_printer(aux, info_msg);
+        nodes_printer(aux, _msg);
         return;
       }
     }
-  } else if ( strcmp(command, diccionario[SEND]) == 0) {
-    char *_msg = (char*) malloc( sizeof(msg) * MAX_WORD_LENGTH );
-    memset(_msg, '\0', MAX_WORD_LENGTH);
+  } else if ( strcmp(command, diccionario[SEND] ) == 0) {
     yamlStringFormater( _msg, "", msg );
-    p_type_automata aux = NULL;
-    for (aux = pautomata; aux; aux = aux->next) {
+    for (; aux; aux = aux->next) {
       write( aux->primer_nodo->fd[1], _msg, strlen(_msg) );
     }
   } else if ( strcmp(command, diccionario[STOP]) == 0) {
@@ -331,7 +321,7 @@ void startListenUserInput( p_type_automata pautomata) {
 }
 
 void controladorProcesos(p_type_nodo *pnodo, char* nombre_automata, char **estados_finales, int size_finales/*, int *fd*/) {
-    char *buffer = (char *) malloc( sizeof(char) * MAX_RESPONE_LENGTH);
+    char *buffer = (char *) malloc( sizeof(char) * MAX_WORD_LENGTH);
     memset(buffer, '\0', MAX_WORD_LENGTH);
     char *recog;
     char *data = (char*) malloc( sizeof( char ) * MAX_WORD_LENGTH );
@@ -375,21 +365,25 @@ void controladorProcesos(p_type_nodo *pnodo, char* nombre_automata, char **estad
             }
         }
         p_type_transicion aux = (*pnodo)->primer_transicion;
-        for(; aux; aux = aux->next) {
-            if ( memcmp(aux->entrada, data, strlen(aux->entrada) ) == 0 ) {
-                strncat(recog, data, strlen(aux->entrada));
-                data+= strlen(aux->entrada);
-                yamlStringFormater(_msg, recog, data);
-                p_type_nodo pnodo_aux = (*pnodo)->primer_nodo;
-                for (; pnodo_aux; pnodo_aux = pnodo_aux->next) {
-                    if ( strcmp( aux->sig_estado, pnodo_aux->id) == 0 ) {
-                        write(pnodo_aux->fd[1], _msg, strlen(_msg));
-                        send = 1;
-                        break;
-                    }
-                }
-                break;
-            }
+        if ( strlen( data ) > 0) {
+          for(; aux; aux = aux->next) {
+              if ( memcmp(aux->entrada, data, strlen(aux->entrada) ) == 0 ) {
+                  strncat(recog, data, strlen(aux->entrada));
+                  data+= strlen(aux->entrada);
+                  if (  strlen(data) == 0 )
+                    strcpy(data, "\"\"");
+                  yamlStringFormater(_msg, recog, data);
+                  p_type_nodo pnodo_aux = (*pnodo)->primer_nodo;
+                  for (; pnodo_aux; pnodo_aux = pnodo_aux->next) {
+                      if ( strcmp( aux->sig_estado, pnodo_aux->id) == 0 ) {
+                          write(pnodo_aux->fd[1], _msg, strlen(_msg));
+                          send = 1;
+                          break;
+                      }
+                  }
+                  break;
+              }
+          }
         }
         if ( !send ) {
           int i = 0;
