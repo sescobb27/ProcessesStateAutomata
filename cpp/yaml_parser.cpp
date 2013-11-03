@@ -1,6 +1,11 @@
 #include "yaml-cpp/yaml.h"
+#include <stdio.h>
+#include <errno.h>
+#include <sys/types.h>
 #include <iostream>
 #include <fstream>
+#include <sys/wait.h>
+#include <signal.h>
 #include <string>
 #include <list>
 
@@ -14,7 +19,11 @@
 #define NUM_CHARS 10
 #define FIN_YAML 0
 #define NO_FIN_YAML 1
+using namespace std;
 
+/*
+* TAGS para determinar el diccionario
+*/
 enum tags {
   AUTOMATA,
   DESCRIPTION,
@@ -29,34 +38,67 @@ enum tags {
   NEXT
 };
 
-struct flujo_nodos{
-    std::string entrada;
-    std::string sig_estado;
-};
+//ESTRUCTURAS
 
-struct transicion_nodos { 
-    std::list<flujo_nodos> list_flujo_nodos;
-};
 
+/*
+*Estructura para el flujo de nodos
+*/
+struct transicion_nodos {
+    string entrada;
+    string sig_estado;     
+};
+/*
+*Estructura la definición del automata
+*/
 struct nodo_automata{
-    char id;
-    std::list<transicion_nodos> list_transiciones;
-};
+    string id;
+    int *fd;
+    int *pipe_to_father;    
+    list<transicion_nodos> list_transiciones;
 
+};
+/*
+*Estructura para la definición del campo descripción
+*en el archivo yaml
+*/
 struct automata_desc{
-    std::string  nombre;
-    std::string descripcion;
-    std::list<std::string> alfabeto;
+    string  nombre;
+    string descripcion;
+    list<string> alfabeto;
     int sizeAlfabeto;
-    std::list<std::string> estados;
+    list<string> estados;
     int sizeEstados;
-    std::string estadoinicial;
-    std::list<std::string> final;
+    string estadoinicial;
+    list<string> final;
     int sizeFinal;
-    std::list<nodo_automata> nodos_automata;
+    list<nodo_automata> nodos_automata;
 };
 
 typedef enum tags tag;
+
+//diccionario de TAGS en el archivo yaml
+string diccionario[20]={
+  "automata",
+  "descripcion",
+  "alpha",
+  "states",
+  "start",
+  "final",
+  "delta",
+  "node",
+  "trans",
+  "in",
+  "next",
+  "msg",
+  "cmd",
+  "info",
+  "send",
+  "stop",
+  "rest",
+  "recog",
+  "codterm"
+};
 
 typedef struct automata_desc automata;
 typedef struct automata_desc* p_type_automata;
@@ -67,30 +109,17 @@ typedef struct flujo_nodos* p_type_flujo;
 typedef struct transicion_nodos transicion;
 typedef struct transicion_nodos* p_type_transicion;
 
-void parseDescriptionSection( YAML::Node *file ){
-    p_type_automata pautomata = ( p_type_automata ) malloc( sizeof( automata ) );
-    // std::cout << file;
-    std::cout << (*file)["automata"].as<std::string>();
-    printf("Entro 1\n");
-    const std::string name= (*file)["automata"].as<std::string>();
-    printf("Entro 2\n");
-    pautomata->descripcion = (*file)["description"].as<std::string>();
-    printf("Entro 3\n");
-    pautomata->alfabeto = (*file)["alpha"].as< std::list<std::string> >();
-    printf("Entro 4\n");
-    pautomata->estados = (*file)["states"].as< std::list<std::string> >();
-    printf("Entro 5\n");
-    pautomata->estadoinicial = (*file)["start"].as<std::string>();
-    printf("Entro 6\n");
-    pautomata->final = (*file)["final"].as<std::list<std::string> >();
-    std::cout << "Nombre: \n" << pautomata->nombre;
-    std::cout << "Descripcion: \n" << pautomata->descripcion;
-    std::cout << "Alfabeto: \n";
-    std::list<std::string>::const_iterator it = pautomata->alfabeto.begin();
-    for (; it != pautomata->alfabeto.end(); ++it)
-    {
-      std::cout << it->c_str();
-    }
+list <p_type_automata> automatas;
+
+//Extracción de la entrada y el siguiente estado de cada nodo
+void operator >> (const YAML::Node& node, transicion_nodos& transicion_nodos){
+  node[diccionario[IN]] >> transicion_nodos.entrada;
+  node[diccionario[NEXT]] >> transicion_nodos.sig_estado;
+}
+
+//Extracción de los componentes en el Delta
+void operator >> (const YAML::Node& node, nodo_automata& nodo_automata){
+  
 }
 
 int main(int argc, char const *argv[]){
@@ -98,9 +127,12 @@ int main(int argc, char const *argv[]){
     fprintf(stdout, "There is no file to parse, try again\n");
     return SYSTEM_ERROR;
   }
-  YAML::Node file = YAML::LoadFile(argv[1]);
-  parseDescriptionSection( &file );
-  std::ofstream fout(argv[1]);
-  fout << file;
+  // Parseando el Yaml
+  std::ifstream yaml_file(argv[1]);
+  YAML:: Parser parser(yaml_file);
+  YAML:: Node node;
+  parser.GetNextDocument(node);
+
+  
   return SYSTEM_SUCCESS;
 }
