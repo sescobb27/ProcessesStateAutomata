@@ -35,7 +35,16 @@ enum tags {
   NODE,
   TRANS,
   IN,
-  NEXT
+  NEXT,
+  // user command parser
+  MSG,
+  CMD,
+  INFO,
+  SEND,
+  STOP,
+  REST,
+  RECOG,
+  CODTERM
 };
 
 //ESTRUCTURAS
@@ -117,9 +126,22 @@ void operator >> (const YAML::Node& node, transicion_nodos& transicion_nodos){
   node[diccionario[NEXT]] >> transicion_nodos.sig_estado;
 }
 
+//Extracción de los componentes de un automata
+void operator >> (const YAML::Node& node, nodo_automata& nodo_automata ){
+  node[diccionario[AUTOMATA]] >> nodo_automata.id;
+  const YAML::Node& list_transiciones = node[diccionario[TRANS]];
+  for(int i = 0;list_transiciones.size();i++){
+    transicion_nodos transicion;
+    list_transiciones[i] >> transicion;
+    nodo_automata.list_transiciones.push_back(transicion);
+  }
+}
+
 //Extracción de los componentes en el Delta
-void operator >> (const YAML::Node& node, nodo_automata& nodo_automata){
-  
+void operator >> (const YAML::Node& node, automata_desc& automata_desc){
+  node[diccionario[AUTOMATA]] >> automata_desc.nombre;
+  node[diccionario[DESCRIPTION]] >> automata_desc.descripcion;
+  //node[diccionario[ALPHA]] >> automata_desc.alpha;
 }
 
 int main(int argc, char const *argv[]){
