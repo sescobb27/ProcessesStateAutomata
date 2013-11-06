@@ -119,7 +119,7 @@ void operator >> (const YAML::Node& node, transicion_nodos& transicion_nodos){
 void operator >> (const YAML::Node& node, nodo_automata& nodoAutomata){
   node[diccionario[NODE]] >> nodoAutomata.id;
   const YAML::Node& transiciones = node[diccionario[TRANS]];
-  for(unsigned i = 0;transiciones.size();i++){
+  for(unsigned i = 0;i < transiciones.size();i++){
     transicion_nodos transicion;
     transiciones[i] >> transicion;
     nodoAutomata.list_transiciones.push_back(transicion);
@@ -136,7 +136,7 @@ void operator >> (const YAML::Node& node, automata_desc& automata) {
   const YAML::Node& list_nodos = node[diccionario[DELTA]];     
   for(unsigned j = 0; j < list_nodos.size(); j++){
     nodo_automata nodoAutomata;
-    list_nodos[diccionario[j]] >> nodoAutomata;
+    list_nodos[j] >> nodoAutomata;
     automata.vector_nodos.push_back(nodoAutomata);
   }
 }
