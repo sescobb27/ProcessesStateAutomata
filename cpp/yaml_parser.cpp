@@ -6,8 +6,8 @@
 #include <fstream>
 #include <sys/wait.h>
 #include <signal.h>
-#include <string>
-#include <list>
+#include <string.h>
+#include <vector>
 
 #define YAML_ERROR 0
 #define YAML_SUCCESS 1
@@ -64,7 +64,7 @@ struct nodo_automata{
     string id;
     int *fd;
     int *pipe_to_father;    
-    list<transicion_nodos> list_transiciones;
+    vector<transicion_nodos> list_transiciones;
 
 };
 /*
@@ -74,22 +74,19 @@ struct nodo_automata{
 struct automata_desc{
     string  nombre;
     string descripcion;
-    list<string> alfabeto;
-    int sizeAlfabeto;
-    list<string> estados;
-    int sizeEstados;
+    vector<string> alfabeto;    
+    vector<string> estados;    
     string estadoinicial;
-    list<string> final;
-    int sizeFinal;
-    list<nodo_automata> nodos_automata;
+    vector<string> final;
+    vector<nodo_automata> vector_nodos;
 };
 
-typedef enum tags tag;
+//typedef enum tags tag;
 
 //diccionario de TAGS en el archivo yaml
 string diccionario[20]={
   "automata",
-  "descripcion",
+  "description",
   "alpha",
   "states",
   "start",
@@ -109,16 +106,8 @@ string diccionario[20]={
   "codterm"
 };
 
-typedef struct automata_desc automata;
-typedef struct automata_desc* p_type_automata;
-typedef struct nodo_automata nodo;
-typedef struct nodo_automata* p_type_nodo;
-typedef struct flujo_nodos flujo;
-typedef struct flujo_nodos* p_type_flujo;
-typedef struct transicion_nodos transicion;
-typedef struct transicion_nodos* p_type_transicion;
 
-list <p_type_automata> automatas;
+vector <automata_desc> automatas;
 
 //Extracción de la entrada y el siguiente estado de cada nodo
 void operator >> (const YAML::Node& node, transicion_nodos& transicion_nodos){
@@ -127,21 +116,29 @@ void operator >> (const YAML::Node& node, transicion_nodos& transicion_nodos){
 }
 
 //Extracción de los componentes de un automata
-void operator >> (const YAML::Node& node, nodo_automata& nodo_automata ){
-  node[diccionario[AUTOMATA]] >> nodo_automata.id;
-  const YAML::Node& list_transiciones = node[diccionario[TRANS]];
-  for(int i = 0;list_transiciones.size();i++){
+void operator >> (const YAML::Node& node, nodo_automata& nodoAutomata){
+  node[diccionario[NODE]] >> nodoAutomata.id;
+  const YAML::Node& transiciones = node[diccionario[TRANS]];
+  for(unsigned i = 0;transiciones.size();i++){
     transicion_nodos transicion;
-    list_transiciones[i] >> transicion;
-    nodo_automata.list_transiciones.push_back(transicion);
+    transiciones[i] >> transicion;
+    nodoAutomata.list_transiciones.push_back(transicion);
   }
 }
 
-//Extracción de los componentes en el Delta
-void operator >> (const YAML::Node& node, automata_desc& automata_desc){
-  node[diccionario[AUTOMATA]] >> automata_desc.nombre;
-  node[diccionario[DESCRIPTION]] >> automata_desc.descripcion;
-  //node[diccionario[ALPHA]] >> automata_desc.alpha;
+void operator >> (const YAML::Node& node, automata_desc& automata) {
+  node[diccionario[AUTOMATA]] >> automata.nombre;
+  node[diccionario[DESCRIPTION]] >> automata.descripcion;
+  node[diccionario[ALPHA]] >> automata.alfabeto;
+  node[diccionario[STATES]] >> automata.estados;
+  node[diccionario[START]] >> automata.estadoinicial;
+  node[diccionario[FINAL]] >> automata.final;
+  const YAML::Node& list_nodos = node[diccionario[DELTA]];     
+  for(unsigned j = 0; j < list_nodos.size(); j++){
+    nodo_automata nodoAutomata;
+    list_nodos[diccionario[j]] >> nodoAutomata;
+    automata.vector_nodos.push_back(nodoAutomata);
+  }
 }
 
 int main(int argc, char const *argv[]){
@@ -154,7 +151,25 @@ int main(int argc, char const *argv[]){
   YAML:: Parser parser(yaml_file);
   YAML:: Node node;
   parser.GetNextDocument(node);
-
-  
+  for(unsigned i = 0; i < node.size(); i++){
+    automata_desc automata;
+    node[i] >> automata;
+    automatas.push_back(automata);
+    cout << "Nombre Automata: " << automata.nombre << endl;
+    cout << "descripcion Automata: "<< automata.descripcion << endl;
+    for(unsigned k = 0; k < automata.alfabeto.size(); k++){
+      cout << "Alfabeto Automata: "<< automata.alfabeto[k] << endl;
+    }
+    for(unsigned k = 0; k < automata.estados.size(); k++){
+      cout << "Estado Automata: "<< automata.estados[k] << endl;
+    }
+    cout << "Start Automata: "<< automata.estadoinicial << endl;
+    for(unsigned k = 0; k < automata.final.size(); k++){
+      cout << "Final Automata: "<< automata.final[k] << endl;
+    }     
+    for(unsigned k = 0; k < automata.vector_nodos.size(); k++){
+      cout << "Nodo Automata: "<< automata.vector_nodos[k].id << endl;
+    }
+  } 
   return SYSTEM_SUCCESS;
 }
