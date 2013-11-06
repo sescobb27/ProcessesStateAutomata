@@ -244,7 +244,6 @@ void sendCommand(char *command, char *msg, p_type_automata pautomata) {
   char *_msg = (char*) malloc( sizeof(msg) * MAX_WORD_LENGTH );
   memset(_msg, '\0', MAX_WORD_LENGTH);
   if ( strcmp(command, diccionario[INFO] ) == 0) {
-    p_type_nodo _n_aux;
     for (; aux; aux = aux->next) {
       if ( strlen(msg) == 0){
         nodes_printer(aux, _msg);
@@ -254,9 +253,15 @@ void sendCommand(char *command, char *msg, p_type_automata pautomata) {
       }
     }
   } else if ( strcmp(command, diccionario[SEND] ) == 0) {
+    p_type_nodo _n_aux;
     yamlStringFormater( _msg, "", msg );
     for (; aux; aux = aux->next) {
-      write( aux->primer_nodo->fd[1], _msg, strlen(_msg) );
+      for ( _n_aux = aux->primer_nodo; _n_aux ; _n_aux = _n_aux->next ) {
+        if ( strcmp( _n_aux->id, aux->estadoinicial ) == 0 ) {
+          write( _n_aux->fd[1], _msg, strlen(_msg) );
+          break;
+        }
+      }
     }
   } else if ( strcmp(command, diccionario[STOP]) == 0) {
     // 0 = All processes in the same process group as the sender.
