@@ -17,7 +17,7 @@
 #define ALPHA_SIZE 20
 #define FIN_YAML 0
 #define NO_FIN_YAML 1
-#define MAX_WORD_LENGTH 50
+#define MAX_WORD_LENGTH 500
 #define MAX_AUTOMATAS 20
   // FORMATS
 #define MSG_FORMAT "{ recog: %s, rest: %s }"
@@ -119,17 +119,20 @@ typedef struct transicion_nodos transicion;
 typedef struct transicion_nodos* p_type_transicion;
 
 // definicion de metodos
-p_type_automata parseAutomata(yaml_event_t *event, yaml_parser_t *parser);
+p_type_automata automataParser(yaml_event_t *event, yaml_parser_t *parser);
 void parseTransitions(yaml_parser_t *parser, yaml_event_t *event, p_type_nodo *pnodo);
 void parseNodesSection(yaml_parser_t *parser, yaml_event_t *event, p_type_automata *pautomata);
 void parseSequenceSection(yaml_event_t *event, yaml_parser_t *parser, int kind, p_type_automata *pautomata);
 int deleteEvent(yaml_event_t *event);
-int yamlParser(yaml_event_t *event, yaml_parser_t *parser);
-void next(yaml_event_t *event, yaml_parser_t *parser);
+int yamlParser(yaml_event_t *event, yaml_parser_t *parser,  char *info_msg);
+void next(yaml_event_t *event, yaml_parser_t *parser, char *where);
 void crearHijos(p_type_automata pautomata);
 void sendCommand(char *command, char *msg, p_type_automata pautomata);
 void yamlInfoNode( char *info, char *id, int ppid ) ;
 void printInfoMsg(char *automata_name);
+void printAcceptMsg( char *automata_name, char *msg );
+void printRejectMsg( char *automata_name, char *msg, int pos );
+void printErrorMsg( char *where, char *cause );
 
 int **fd_padre;
 
@@ -143,13 +146,9 @@ void nodes_printer(p_type_automata pautomata, char *info_msg) {
   }
 }
 
-int yamlParser(yaml_event_t *event, yaml_parser_t *parser){
+int yamlParser(yaml_event_t *event, yaml_parser_t *parser, char *where ){
   if( !yaml_parser_parse(parser, event) ) {
-     fprintf(stderr,"Parser Error %d\n", (*parser).error);
-     fprintf(stderr, "Paser Problem %s\n", (*parser).problem);
-     if ((*parser).error == 4) {
-        fprintf(stderr, "DOCUMENT_END\n");
-     }
+     printErrorMsg( where, (*parser).problem );
      kill( 0, SIGKILL );
   }
   return 1;
@@ -168,10 +167,10 @@ int deleteEvent(yaml_event_t *event) {
 }
 
 // pregunto si es fin de archivo, si lo es hubo un erro, sino sigo con el siguiente evento
-void next(yaml_event_t *event, yaml_parser_t *parser){
+void next(yaml_event_t *event, yaml_parser_t *parser, char *where){
   if( !deleteEvent( event ) )
       exit(EXIT_FAILURE);
-  yamlParser(event, parser);
+  yamlParser(event, parser, where);
 }
 
 void initStringArray(p_type_automata *pautomata) {
@@ -233,38 +232,41 @@ void printErrorMsg( char *where, char *cause ) {
   fprintf(stderr, ERROR_FORMAT, where, cause );
 }
 
-void* controladorHiloLectura(void *args) {
+void* readingThreadController(void *args) {
   p_type_automata pautomata = (p_type_automata) args;
   char *buffer = (char*) malloc( sizeof(char) * MAX_WORD_LENGTH );
   memset( buffer, '\0', MAX_WORD_LENGTH);
   char *data = (char*) malloc ( sizeof(char) * MAX_WORD_LENGTH );
   memset( data, '\0', MAX_WORD_LENGTH);
   char *recog;
+  char *where = (char*) malloc( sizeof(char) * MAX_WORD_LENGTH );
+  memset( where, '\0', MAX_WORD_LENGTH);
+  sprintf( where, "\"Pid: %d, automata: %s, on function readingThreadController\"", getpid(), pautomata->nombre );
   int codterm;
   while ( 1 ) {
     while ( read( pautomata->pipe_to_father[0], buffer, MAX_WORD_LENGTH ) > 0 ) {
       yaml_parser_t parser;
       yaml_event_t event;
-      if ( !yaml_parser_initialize( &parser ) ){
-          fprintf(stderr, "Unable to initialize yaml parser\n");
+      if ( !yaml_parser_initialize( &parser ) ) {
+          printErrorMsg(where, "Unable to initialize yaml parser");
           exit(EXIT_FAILURE);
       }
       yaml_parser_set_input_string( &parser, buffer, strlen( buffer + 1 ) );
-      if ( yamlParser( &event, &parser ) ){
+      if ( yamlParser( &event, &parser, where ) ){
         while (event.type != YAML_STREAM_END_EVENT) {
           if (event.type != YAML_SCALAR_EVENT ) {
-              next(&event, &parser);
+              next(&event, &parser, where);
               continue;
           } else {
             strcpy( data, event.data.scalar.value );
             if ( strcmp( data, diccionario[CODTERM] ) == 0) {
-              next(&event,&parser);
+              next(&event,&parser, where);
               if ( event.type == YAML_SCALAR_EVENT ) {
                 codterm = atoi( event.data.scalar.value );
-                next(&event, &parser);
+                next(&event, &parser, where);
               }
             } else if ( strcmp( data, diccionario[RECOG] ) == 0 ) {
-                next(&event,&parser);
+                next(&event,&parser, where);
                 if ( event.type == YAML_SCALAR_EVENT ) {
                     recog = (char*) malloc( sizeof(char) * strlen( event.data.scalar.value ) + 1);
                     strcpy( recog, event.data.scalar.value );
@@ -272,10 +274,10 @@ void* controladorHiloLectura(void *args) {
                       printAcceptMsg( pautomata->nombre, recog );
                       break;
                     }
-                    next(&event,&parser);
+                    next(&event,&parser, where);
                 }
            } else if ( strcmp( data, diccionario[REST] ) == 0 && codterm == 1 ){
-                next(&event, &parser);
+                next(&event, &parser, where);
                 if ( event.type == YAML_SCALAR_EVENT ) {
                     strcpy( data, recog );
                     strcat( data, event.data.scalar.value );
@@ -321,7 +323,7 @@ void sendCommand(char *command, char *msg, p_type_automata pautomata) {
   }
 }
 
-void startListenUserInput( p_type_automata pautomata) {
+void startListeningUserInput( p_type_automata pautomata) {
   yaml_parser_t parser;
   yaml_event_t event;
   char *data, *command, *msg;
@@ -331,9 +333,10 @@ void startListenUserInput( p_type_automata pautomata) {
   memset(command, '\0', MAX_WORD_LENGTH);
   msg = (char*) malloc(sizeof(char) * MAX_WORD_LENGTH);
   memset( msg, '\0', MAX_WORD_LENGTH );
+  char *where = "on startListeningUserInput";
   while( 1 ) {
     if ( !yaml_parser_initialize( &parser ) ){
-      fprintf(stderr, "Unable to initialize yaml parser\n");
+      printErrorMsg(where, "Unable to initialize yaml parser");
       exit(EXIT_FAILURE);
     }
     fgets(msg, MAX_WORD_LENGTH, stdin);
@@ -342,26 +345,26 @@ void startListenUserInput( p_type_automata pautomata) {
       msg[size] = '\0';
     }
     yaml_parser_set_input_string( &parser, msg, size );
-    if (yamlParser( &event,&parser )) {
+    if (yamlParser( &event,&parser,  where )) {
       while (event.type != YAML_STREAM_END_EVENT) {
         if (event.type != YAML_SCALAR_EVENT ) {
-          next(&event, &parser);
+          next(&event, &parser, where);
           continue;
         } else {
           strcpy( data, event.data.scalar.value );
           if ( strcmp( data, diccionario[CMD] ) == 0 ) {
-            next(&event,&parser);
+            next(&event,&parser, where);
             if ( event.type == YAML_SCALAR_EVENT ) {
               strcpy( data, event.data.scalar.value );
               command = getCommand(data );
               if ( !command ) {
-                fprintf(stderr, "Command Not Found\n");
+                printErrorMsg(where, "Command Not Found");
                 break;
               }
-              next(&event,&parser);
+              next(&event,&parser, where);
            }
          } else if ( strcmp( data, diccionario[MSG] ) == 0 ){
-            next(&event, &parser);
+            next(&event, &parser, where);
             if ( event.type == YAML_SCALAR_EVENT ) {
               strcpy( data, event.data.scalar.value );
               sendCommand( command, data, pautomata );
@@ -376,7 +379,7 @@ void startListenUserInput( p_type_automata pautomata) {
   }
 }
 
-void controladorProcesos(p_type_nodo *pnodo, char* nombre_automata, char **estados_finales, int size_finales/*, int *fd*/) {
+void processController(p_type_nodo *pnodo, char* nombre_automata, char **estados_finales, int size_finales/*, int *fd*/) {
     char *buffer = (char *) malloc( sizeof(char) * MAX_WORD_LENGTH);
     memset(buffer, '\0', MAX_WORD_LENGTH);
     char *recog;
@@ -384,6 +387,7 @@ void controladorProcesos(p_type_nodo *pnodo, char* nombre_automata, char **estad
     char *_msg = (char*) malloc( sizeof( char ) * MAX_WORD_LENGTH );
     memset(_msg, '\0', MAX_WORD_LENGTH);
     int send = 0, check = 0;
+    char *where = "on processController";
     while(1)
     {
       while (read((*pnodo)->fd[0], buffer, MAX_WORD_LENGTH) > 0) {
@@ -393,26 +397,26 @@ void controladorProcesos(p_type_nodo *pnodo, char* nombre_automata, char **estad
         send = 0;
         check = 0;
         if ( !yaml_parser_initialize( &parser ) ){
-            fprintf(stderr, "Unable to initialize yaml parser\n");
+            printErrorMsg(where, "Unable to initialize yaml parser");
             exit(EXIT_FAILURE);
         }
         yaml_parser_set_input_string( &parser, buffer, strlen( buffer + 1 ) );
-        if ( yamlParser( &event, &parser ) ){
+        if ( yamlParser( &event, &parser, where ) ){
             while (event.type != YAML_STREAM_END_EVENT) {
                 if (event.type != YAML_SCALAR_EVENT ) {
-                    next(&event, &parser);
+                    next(&event, &parser, where);
                     continue;
                 } else {
                   strcpy( data, event.data.scalar.value );
                   if ( strcmp( data, diccionario[RECOG] ) == 0 ) {
-                      next(&event,&parser);
+                      next(&event,&parser, where);
                       if ( event.type == YAML_SCALAR_EVENT ) {
                           recog = (char*) malloc( sizeof(char) * strlen( event.data.scalar.value ) + 1);
                           strcpy( recog, event.data.scalar.value );
-                          next(&event,&parser);
+                          next(&event,&parser, where);
                      }
                  } else if ( strcmp( data, diccionario[REST] ) == 0 ){
-                      next(&event, &parser);
+                      next(&event, &parser, where);
                       if ( event.type == YAML_SCALAR_EVENT ) {
                           strcpy( data, event.data.scalar.value );
                       }
@@ -459,11 +463,12 @@ void controladorProcesos(p_type_nodo *pnodo, char* nombre_automata, char **estad
     }
 }
 
-int creadorProcesoPorNodo(p_type_nodo pnodo, char* nombre_automata, int nodo, char **estados_finales, int size_finales) {
+int createProcessPerNode(p_type_nodo pnodo, char* nombre_automata, int nodo, char **estados_finales, int size_finales) {
   p_type_nodo aux = NULL;
+  char *where = "on createProcessPerNode";
   for( aux = pnodo; aux; aux = aux->next) {
     if (pipe(fd_padre[nodo]) == -1) {
-       perror("pipe");
+       printErrorMsg( where , "creating pipe for nodes" );
        exit(EXIT_FAILURE);
      }
     aux->fd = fd_padre[nodo];
@@ -473,7 +478,7 @@ int creadorProcesoPorNodo(p_type_nodo pnodo, char* nombre_automata, int nodo, ch
   for( aux = pnodo; aux; aux = aux->next) {
     if ( (id = fork()) == 0 ) {
       // dentro del proceso hijo
-      controladorProcesos( &aux, nombre_automata, estados_finales, size_finales/*, fd_padre[nodo] */);
+      processController( &aux, nombre_automata, estados_finales, size_finales/*, fd_padre[nodo] */);
       break;
     }else{
       // dentro del padre
@@ -492,40 +497,41 @@ void crearHijos( p_type_automata pautomata) {
   }
   int nodo = 0;
   for (aux = (pautomata); aux; aux = aux->next) {
-    pthread_create(&(aux->hilo_lectura), NULL, controladorHiloLectura, (void *) aux);
-    nodo = creadorProcesoPorNodo(aux->primer_nodo, aux->nombre, nodo, aux->final, aux->sizeFinal);
+    pthread_create(&(aux->hilo_lectura), NULL, readingThreadController, (void *) aux);
+    nodo = createProcessPerNode(aux->primer_nodo, aux->nombre, nodo, aux->final, aux->sizeFinal);
   }
-  startListenUserInput( pautomata );
+  startListeningUserInput( pautomata );
 }
 
 void parseTransitions(yaml_parser_t *parser, yaml_event_t *event, p_type_nodo *pnodo){
-  next(event, parser);
+  char *where = "on parseTransitions";
+  next(event, parser, where);
   char *data = (char *)malloc(sizeof(char) * MAX_WORD_LENGTH);
   strcpy(data, event->data.scalar.value);
   if ( strcmp( data, diccionario[TRANS]) != 0 )
       exit(EXIT_FAILURE);
-  next(event, parser);
+  next(event, parser, where);
   (*pnodo)->transiciones = NULL;
   if (event->type != YAML_SEQUENCE_START_EVENT) {
-    next(event, parser);
+    next(event, parser, where);
     return;
   }
-  next(event, parser);
+  next(event, parser, where);
   while( event->type == YAML_MAPPING_START_EVENT ) {
-    next(event, parser);
+    next(event, parser, where);
     strcpy(data, event->data.scalar.value);
     if ( strcmp( data, diccionario[IN]) == 0 ) {
       p_type_transicion ptransicion = ( p_type_transicion) malloc( sizeof( transicion ) );
       ptransicion->entrada = malloc( sizeof(char) * MAX_WORD_LENGTH );
       ptransicion->sig_estado = malloc( sizeof(char) * MAX_WORD_LENGTH );
       // pedir proximo evento y asignarselo a la entrada
-      next(event, parser);
+      next(event, parser, where);
       strcpy(data, event->data.scalar.value);
       strcpy( ptransicion->entrada, data );
       // el proximo tag es next que nos indica el estado para donde vamos
-      next(event, parser);
+      next(event, parser, where);
       // pedir proximo evento y asignarselo a el siguiendo estado
-      next(event, parser);
+      next(event, parser, where);
       strcpy(data, event->data.scalar.value);
       strcpy( ptransicion->sig_estado, data );
       if ((*pnodo)->transiciones == NULL){
@@ -537,34 +543,35 @@ void parseTransitions(yaml_parser_t *parser, yaml_event_t *event, p_type_nodo *p
         ptransicion = ptransicion->next;
       }
       // volver a pedir el proximo evento para poder ver si es o no otra transicion
-      next(event, parser);
+      next(event, parser, where);
       if (event->type == YAML_MAPPING_END_EVENT) {
         /* code */
-        next(event, parser);
+        next(event, parser, where);
       }
     }
   }
 }
 
-void parseNodesSection(yaml_parser_t *parser, yaml_event_t *event, p_type_automata *pautomata){
-  next(event, parser);
+void parseNodesSection(yaml_parser_t *parser, yaml_event_t *event, p_type_automata *pautomata) {
+  char *where = "on parseNodesSection";
+  next(event, parser, where);
   char *data = (char *)malloc(sizeof(char) * MAX_WORD_LENGTH);
   int size = 0;
   strcpy(data, event->data.scalar.value);
   if ( strcmp(data, diccionario[DELTA]) == 0 ) {
-        next(event, parser);
+        next(event, parser, where);
         if (event->type == YAML_SEQUENCE_START_EVENT){
-              next(event, parser);
+              next(event, parser, where);
         }else{
               exit(EXIT_FAILURE);
         }
       p_type_nodo pnodo = NULL;
       (*pautomata)->nodos = NULL;
       while (event->type == YAML_MAPPING_START_EVENT){
-            next(event, parser);
+            next(event, parser, where);
             strcpy(data, event->data.scalar.value);
             if ( strcmp( data, diccionario[NODE]) == 0){
-                  next(event, parser);
+                  next(event, parser, where);
                   pnodo = (p_type_nodo) malloc( sizeof( nodo ) );
                   pnodo->id = (char *) malloc( sizeof(char) * MAX_WORD_LENGTH );
                   strcpy(pnodo->id, event->data.scalar.value);
@@ -581,9 +588,9 @@ void parseNodesSection(yaml_parser_t *parser, yaml_event_t *event, p_type_automa
                   (*pautomata)->nodos->primer_nodo = (*pautomata)->primer_nodo;
                   pnodo = pnodo->next;
                   if( event->type == YAML_SEQUENCE_END_EVENT){
-                        next(event, parser);
+                        next(event, parser, where);
                         if( event->type == YAML_MAPPING_END_EVENT){
-                          next( event, parser );
+                          next( event, parser, where);
                         }
                   }
                   ++size;
@@ -594,18 +601,19 @@ void parseNodesSection(yaml_parser_t *parser, yaml_event_t *event, p_type_automa
 
 void parseSequenceSection(yaml_event_t *event, yaml_parser_t *parser, int kind, p_type_automata *pautomata) {
     char *data = (char*) malloc(sizeof(char) * MAX_WORD_LENGTH);
+    char *where = "on parseSequenceSection";
     switch(kind)
     {
       case ALPHA:
       { //scope for ALPHA case http://stackoverflow.com/questions/92396/why-cant-variables-be-declared-in-a-switch-statement
           int pos_alfab = 0;
-          next(event, parser);
+          next(event, parser, where);
           while(event->type == YAML_SCALAR_EVENT) {
               strcpy(data, event->data.scalar.value);
               (*pautomata)->alfabeto[pos_alfab] = (char *) malloc(event->data.scalar.length);
               strcpy((*pautomata)->alfabeto[pos_alfab], data);
               ++pos_alfab;
-              next(event, parser);
+              next(event, parser, where);
           }
           if( !pos_alfab)
               exit(EXIT_FAILURE);
@@ -615,13 +623,13 @@ void parseSequenceSection(yaml_event_t *event, yaml_parser_t *parser, int kind, 
       case STATES:
       { //scope for STATES case
           int pos_alfab = 0;
-          next(event, parser);
+          next(event, parser, where);
           while(event->type == YAML_SCALAR_EVENT) {
               strcpy(data, event->data.scalar.value);
               (*pautomata)->estados[pos_alfab] = (char *) malloc(event->data.scalar.length);
               strcpy((*pautomata)->estados[pos_alfab], data);
               ++pos_alfab;
-              next(event, parser);
+              next(event, parser, where);
           }
           if( !pos_alfab)
               exit(EXIT_FAILURE);
@@ -631,13 +639,13 @@ void parseSequenceSection(yaml_event_t *event, yaml_parser_t *parser, int kind, 
       case FINAL:
       {
         int pos_alfab = 0;
-        next(event, parser);
+        next(event, parser, where);
         while(event->type == YAML_SCALAR_EVENT) {
             strcpy(data, event->data.scalar.value);
             (*pautomata)->final[pos_alfab] = (char *) malloc(event->data.scalar.length);
             strcpy((*pautomata)->final[pos_alfab], data);
             ++pos_alfab;
-            next(event, parser);
+            next(event, parser, where);
         }
         if( !pos_alfab)
             exit(EXIT_FAILURE);
@@ -647,33 +655,34 @@ void parseSequenceSection(yaml_event_t *event, yaml_parser_t *parser, int kind, 
     }
 }
 
-p_type_automata parseAutomata(yaml_event_t *event, yaml_parser_t *parser) {
+p_type_automata automataParser(yaml_event_t *event, yaml_parser_t *parser) {
+  char *where = "on automataParser";
   char *data = (char *)malloc(sizeof(char) * MAX_WORD_LENGTH);
   strcpy(data, event->data.scalar.value);
   p_type_automata pautomata = (p_type_automata)  malloc( sizeof( automata ) );
   initStringArray(&pautomata);
   // si el dato es = automata pido el siguiente evento que debe de ser el nombre del automata
   if (strcmp( data, diccionario[AUTOMATA] ) == 0) {
-        next(event, parser);
+        next(event, parser, where);
         pautomata->nombre = (char*) malloc(event->data.scalar.length);
         strcpy(pautomata->nombre, event->data.scalar.value);
   }
   // el siguiente evento debe de ser la descripcion
-  next(event, parser);
+  next(event, parser, where);
   strcpy(data, event->data.scalar.value);
   if (strcmp( data, diccionario[DESCRIPTION] ) == 0) {
-        next(event, parser);
+        next(event, parser, where);
         pautomata->descripcion = (char*) malloc(event->data.scalar.length);
         strcpy(pautomata->descripcion, event->data.scalar.value);
         // fprintf(stdout, "\t%s\n", pautomata->descripcion);
   }
   // el siguiente evento debe de ser el alfabeto, el cual contiene una secuencia donde
   // los caracteres estan encerrados en forma de arreglo
-  next(event, parser);
+  next(event, parser, where);
   strcpy(data, event->data.scalar.value);
   if (strcmp( data, diccionario[ALPHA] ) == 0) {
         // el siguiente evento debe de ser una secuencia de letras que componen al alfabeto
-        next(event, parser);
+        next(event, parser, where);
         switch (event->type)
         {
           case YAML_SEQUENCE_START_EVENT:
@@ -688,10 +697,10 @@ p_type_automata parseAutomata(yaml_event_t *event, yaml_parser_t *parser) {
   }
   // el siguiente evento tiene que ser los estados que tendra el automata, que tambien
   // poseen una secuencia donde tiene todos los estados como letras, leer alfabeto
-  next(event, parser);
+  next(event, parser, where);
   strcpy(data, event->data.scalar.value);
   if (strcmp( data, diccionario[STATES] ) == 0) {
-        next(event, parser);
+        next(event, parser, where);
         switch (event->type)
         {
           case YAML_SEQUENCE_START_EVENT:
@@ -701,17 +710,17 @@ p_type_automata parseAutomata(yaml_event_t *event, yaml_parser_t *parser) {
               break;
         }
   }
-  next(event, parser);
+  next(event, parser, where);
   strcpy(data, event->data.scalar.value);
   if (strcmp( data, diccionario[START] ) == 0) {
-    next(event, parser);
+    next(event, parser, where);
     pautomata->estadoinicial = (char *) malloc(sizeof(char) * MAX_WORD_LENGTH);
     strcpy(pautomata->estadoinicial, event->data.scalar.value);
   }
-  next(event, parser);
+  next(event, parser, where);
   strcpy(data, event->data.scalar.value);
   if (strcmp( data, diccionario[FINAL] ) == 0) {
-        next(event, parser);
+        next(event, parser, where);
         switch (event->type)
         {
           case YAML_SEQUENCE_START_EVENT:
@@ -723,7 +732,7 @@ p_type_automata parseAutomata(yaml_event_t *event, yaml_parser_t *parser) {
   }
   pautomata->pipe_to_father = (int*) malloc( sizeof(int) * 2);
    if ( pipe(pautomata->pipe_to_father) == -1 ) {
-    perror("Error creating pipe_to_father");
+    printErrorMsg( where, "Error creating pipe_to_father" );
     exit(EXIT_FAILURE);
    }
   parseNodesSection(parser, event, &pautomata);
@@ -738,19 +747,15 @@ p_type_automata startParsingYamlFile(yaml_parser_t *parser) {
   p_type_automata primer_pautomata = NULL;
   do
   {
-      if( !yaml_parser_parse(parser, &event) )
-      {
-         fprintf(stderr, "Parser Error %d\n", (*parser).error);
-         exit(EXIT_FAILURE);
-      }
+      yamlParser( &event, parser, "on startParsingYamlFile" );
       switch((event).type)
       {
           case YAML_SCALAR_EVENT:
               if (pautomata == NULL){
-                  primer_pautomata = parseAutomata( &event, parser );
+                  primer_pautomata = automataParser( &event, parser );
                   pautomata = primer_pautomata;
               }else {
-                  pautomata->next = parseAutomata( &event, parser );
+                  pautomata->next = automataParser( &event, parser );
                   pautomata = pautomata->next;
               }
               break;
@@ -758,29 +763,26 @@ p_type_automata startParsingYamlFile(yaml_parser_t *parser) {
       deleteEvent(&event);
   } while ((event).type != YAML_STREAM_END_TOKEN);
   yaml_event_delete( &event );
-  // clean parser
   return primer_pautomata;
 }
 
 int main(int argc, char const *argv[]){
   setpgid( getpid(), getpid() );
-  if ( argc < 2 )
-  {
-    printf("There is no file to parse, try again\n");
+  if ( argc < 2 ) {
+    printErrorMsg("Main", "There is no file to parse, try again");
     return SYSTEM_ERROR;
   }
   FILE *yaml_file = fopen( argv[1], "r" );
-  if ( yaml_file == FILE_ERROR )
-  {
-    printf("Could not open file\n");
+  if ( yaml_file == FILE_ERROR ) {
+    printErrorMsg("Main", "Couldn't open file");
     return SYSTEM_ERROR;
   }
   yaml_parser_t parser;
 
-  // if ( yaml_parser_initialize( &parser ) == YAML_ERROR)
-  if ( !yaml_parser_initialize( &parser ) )
-    printf("Unable to initialize yaml parser\n");
-  //read yaml file
+  if ( !yaml_parser_initialize( &parser ) ) {
+    printErrorMsg("Main", "Unable to initialize yaml parser");
+    return SYSTEM_ERROR;
+  }
   yaml_parser_set_input_file( &parser, yaml_file );
 
   p_type_automata pautomata = NULL;
