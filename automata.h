@@ -1,3 +1,4 @@
+#include "yaml.h"
 #include <unistd.h>
 #include <pthread.h>
 #define YAML_ERROR 0
@@ -53,9 +54,60 @@ struct automata_desc{
     struct automata_desc *next;
 };
 
+// TAGS para determinar el diccionario
+enum tags {
+  AUTOMATA,
+  DESCRIPTION,
+  ALPHA,
+  STATES,
+  START,
+  FINAL,
+  DELTA,
+  NODE,
+  TRANS,
+  IN,
+  NEXT,
+  // user command parser
+  MSG,
+  CMD,
+  INFO,
+  SEND,
+  STOP,
+  REST,
+  RECOG,
+  CODTERM
+};
+
 typedef struct automata_desc automata;
 typedef struct automata_desc* p_type_automata;
 typedef struct nodo_automata nodo;
 typedef struct nodo_automata* p_type_nodo;
 typedef struct transicion_nodos transicion;
 typedef struct transicion_nodos* p_type_transicion;
+typedef enum tags tag;
+
+// definicion de metodos
+void nodes_printer(p_type_automata pautomata, char *info_msg);
+int yamlParser(yaml_event_t *event, yaml_parser_t *parser, char *where );
+int deleteEvent(yaml_event_t *event);
+void next(yaml_event_t *event, yaml_parser_t *parser, char *where);
+void initStringArray(p_type_automata *pautomata);
+char* getCommand( char* data );
+void yamlStringFormater( char *msg, char *recog, char *rest );
+void yamlCodeStringFormater ( int codterm, char *msg, char *recog, char *rest );
+void yamlInfoNode( char *info, char *id, int ppid );
+void printInfoMsg(char *automata_name);
+void printAcceptMsg( char *automata_name, char *msg );
+void printRejectMsg( char *automata_name, char *msg, int pos );
+void printErrorMsg( char *where, const char *cause );
+void* readingThreadController(void *args);
+void sendCommand(char *command, char *msg, p_type_automata pautomata);
+void startListeningUserInput( p_type_automata pautomata);
+void processController(p_type_nodo *pnodo, char* nombre_automata, char **estados_finales, int size_finales);
+int createProcessPerNode(p_type_nodo pnodo, char* nombre_automata, int nodo, char **estados_finales, int size_finales);
+void crearHijos( p_type_automata pautomata);
+void parseTransitions(yaml_parser_t *parser, yaml_event_t *event, p_type_nodo *pnodo);
+void parseNodesSection(yaml_parser_t *parser, yaml_event_t *event, p_type_automata *pautomata);
+void parseSequenceSection(yaml_event_t *event, yaml_parser_t *parser, int kind, p_type_automata *pautomata);
+p_type_automata automataParser(yaml_event_t *event, yaml_parser_t *parser);
+p_type_automata startParsingYamlFile(yaml_parser_t *parser);

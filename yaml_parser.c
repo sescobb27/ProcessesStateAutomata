@@ -1,4 +1,3 @@
-#include "yaml.h"
 #include <stdio.h>
 #include "stdlib.h"
 #include <sys/types.h>
@@ -6,30 +5,6 @@
 #include <sys/wait.h>
 #include <signal.h>
 #include "automata.h"
-
-// TAGS para determinar el diccionario
-enum tags {
-  AUTOMATA,
-  DESCRIPTION,
-  ALPHA,
-  STATES,
-  START,
-  FINAL,
-  DELTA,
-  NODE,
-  TRANS,
-  IN,
-  NEXT,
-  // user command parser
-  MSG,
-  CMD,
-  INFO,
-  SEND,
-  STOP,
-  REST,
-  RECOG,
-  CODTERM
-};
 
 // diccionario de TAGS  en el archivo yaml
 char *diccionario[20] = {
@@ -53,24 +28,6 @@ char *diccionario[20] = {
   "recog",
   "codterm"
 };
-
-typedef enum tags tag;
-
-// definicion de metodos
-p_type_automata automataParser(yaml_event_t *event, yaml_parser_t *parser);
-void parseTransitions(yaml_parser_t *parser, yaml_event_t *event, p_type_nodo *pnodo);
-void parseNodesSection(yaml_parser_t *parser, yaml_event_t *event, p_type_automata *pautomata);
-void parseSequenceSection(yaml_event_t *event, yaml_parser_t *parser, int kind, p_type_automata *pautomata);
-int deleteEvent(yaml_event_t *event);
-int yamlParser(yaml_event_t *event, yaml_parser_t *parser,  char *info_msg);
-void next(yaml_event_t *event, yaml_parser_t *parser, char *where);
-void crearHijos(p_type_automata pautomata);
-void sendCommand(char *command, char *msg, p_type_automata pautomata);
-void yamlInfoNode( char *info, char *id, int ppid ) ;
-void printInfoMsg(char *automata_name);
-void printAcceptMsg( char *automata_name, char *msg );
-void printRejectMsg( char *automata_name, char *msg, int pos );
-void printErrorMsg( char *where, const char *cause );
 
 int **fd_padre;
 
