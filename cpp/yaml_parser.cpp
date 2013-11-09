@@ -145,17 +145,66 @@ void operator >> (const YAML::Node& node, automata_desc& automata) {
     automata.vector_nodos.push_back(nodoAutomata);
   }
 }
+/*
+void operator >> (const YAML::Node& node, string& str){
+  string 
+}
+*/
 
-void lectorComandos(vector<automata_desc>lista_automatas){
-  
-  string str;
+void print_node (YAML::Node const &n)
+{
+   switch (n.Type ())
+   {
+      case YAML::NodeType::Null: cout << "NIL" << endl; break;
+      case YAML::NodeType::Scalar:
+         {
+            string s;
+            n.GetScalar (s);
+            cout << "SCALAR: " << s << endl;
+            break;
+         }
+      case YAML::NodeType::Sequence:
+         {
+            cout << "SEQ[" << endl;
+            for (size_t i = 0; i < n.size (); ++i)
+               print_node (n [i]);
+            cout << "]";
+            break;
+         }
+      case YAML::NodeType::Map:
+         {
+            cout << "MAP{" << endl;
+            for (YAML::Iterator it = n.begin (); it != n.end (); ++it)
+            {
+               print_node (it.first ());
+               cout << " : "; print_node (it.second());
+            }
+            cout << "}" << endl;
+            break;
+         }
+      default:
+         cout << "wtf?";
+         break;
+   }
+}
+
+
+
+void lectorComandos(vector<automata_desc>lista_automatas){  
+  string aux;
   //leemos comando.
-  while(true){
-    cin >> str;
-    std::ifstream input(str.c_str());
-    YAML:: Parser parser(input);
-    YAML:: Node cmd;
-    parser.GetNextDocument(cmd);    
+  while(true){    
+    getline(cin,aux);    
+    stringstream str(aux);
+   
+    YAML:: Parser parser(str);
+    YAML:: Node node;      
+    if (!parser.GetNextDocument (node))
+      cerr << "cant parse: \n";
+    string cmd,msg;
+    node["cmd"] >> cmd;
+    node["msg"] >> msg;   
+    cout << cmd << ": " << msg << endl;     
   }
 }
 
@@ -215,7 +264,7 @@ int main(int argc, char const *argv[]){
     return SYSTEM_ERROR;
   }
   // Parseando el Yaml
-  std::ifstream yaml_file(argv[1]);
+  ifstream yaml_file(argv[1]);
   YAML:: Parser parser(yaml_file);
   YAML:: Node node;
   parser.GetNextDocument(node);
