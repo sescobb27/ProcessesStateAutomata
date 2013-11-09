@@ -17,12 +17,21 @@
 #define SYSTEM_SUCCESS 0
 #define SYSTEM_ERROR 1
 #define FILE_ERROR 0
-#define ALPHA_NUMBER 200
-#define STATES_NUMBER 200
-#define NUM_CHARS 10
+#define ALPHA_SIZE 20
 #define FIN_YAML 0
 #define NO_FIN_YAML 1
+#define MAX_WORD_LENGTH 500
 #define MAX_AUTOMATAS 20
+
+  // FORMATS
+#define MSG_FORMAT "{ recog: %s, rest: %s }"
+#define CODE_MSG_FORMAT "{ codterm: %d, recog: %s, rest: %s }"
+#define INFO_FORMAT       "- msgtype: info\n  info:\n    - automata: %s\n      ppid: %d\n"
+#define ACCEPT_FORMAT   "- msgtype: accept\n  accept:\n     - automata: %s\n       msg: %s\n"
+#define REJECT_FORMAT    "- msgtype: reject\n  reject:\n     - automata: %s\n       msg: %s\n       pos: %d\n"
+#define ERROR_FORMAT    "- msgtype: error\n  error:\n    - where: \"%s\"\n      cause: \"%s\"\n"
+#define NODE_MSG_FORMAT "      - node: %s\n        pid: %d\n"
+
 using namespace std;
 
 /*
@@ -113,6 +122,43 @@ string diccionario[20]={
   "codterm"
 };
 
+
+void yamlStringFormater( char *msg, char *recog, char *rest ) {
+  sprintf(msg, MSG_FORMAT, recog, rest );
+}
+void yamlCodeStringFormater ( int codterm, char *msg, char *recog, char *rest ) {
+  sprintf(msg, CODE_MSG_FORMAT, codterm, recog, rest );
+}
+
+void yamlInfoNode( char *info, const char *id, int ppid ) {
+  sprintf( info, NODE_MSG_FORMAT, id, ppid );
+}
+
+void printInfoMsg(string automata_name) {
+  fprintf(stdout, INFO_FORMAT, automata_name.c_str(), getpid());
+}
+
+void printAcceptMsg( string automata_name, string msg ) {
+  fprintf(stdout, ACCEPT_FORMAT, automata_name.c_str(), msg.c_str() );
+}
+
+void printRejectMsg( string automata_name, string msg, int pos ) {
+  fprintf(stdout, REJECT_FORMAT, automata_name.c_str(), msg.c_str(), pos );
+}
+
+void printErrorMsg( string where, string cause ) {
+  fprintf(stderr, ERROR_FORMAT, where.c_str(), cause.c_str() );
+}
+
+void nodes_printer(automata_desc automata, char *info_msg) {
+  printInfoMsg(automata.nombre);
+  vector <nodo_automata> lista_aux = automata.vector_nodos;
+  for (unsigned i = 0; i < lista_aux.size(); i++) {
+    yamlInfoNode( info_msg, lista_aux[i].id.c_str(), lista_aux[i].pid);
+    fprintf(stdout, "%s", info_msg);
+  }
+}
+
 //Extracción de la entrada y el siguiente estado de cada nodo
 void operator >> (const YAML::Node& node, transicion_nodos& transicion_nodos){
   node[diccionario[IN]] >> transicion_nodos.entrada;
@@ -145,49 +191,37 @@ void operator >> (const YAML::Node& node, automata_desc& automata) {
     automata.vector_nodos.push_back(nodoAutomata);
   }
 }
-/*
-void operator >> (const YAML::Node& node, string& str){
-  string 
-}
-*/
 
-void print_node (YAML::Node const &n)
-{
-   switch (n.Type ())
-   {
-      case YAML::NodeType::Null: cout << "NIL" << endl; break;
-      case YAML::NodeType::Scalar:
-         {
-            string s;
-            n.GetScalar (s);
-            cout << "SCALAR: " << s << endl;
-            break;
-         }
-      case YAML::NodeType::Sequence:
-         {
-            cout << "SEQ[" << endl;
-            for (size_t i = 0; i < n.size (); ++i)
-               print_node (n [i]);
-            cout << "]";
-            break;
-         }
-      case YAML::NodeType::Map:
-         {
-            cout << "MAP{" << endl;
-            for (YAML::Iterator it = n.begin (); it != n.end (); ++it)
-            {
-               print_node (it.first ());
-               cout << " : "; print_node (it.second());
-            }
-            cout << "}" << endl;
-            break;
-         }
-      default:
-         cout << "wtf?";
-         break;
-   }
+void sendMsg(vector<automata_desc>lista_automatas, string cmd, string msg){  
+  if(strcmp(cmd.c_str(), diccionario[INFO].c_str()) == 0){
+    char *_msg = (char*)malloc(sizeof(char)*MAX_WORD_LENGTH);
+    memset(_msg, '\0', MAX_WORD_LENGTH);   
+    for(unsigned i = 0; i < lista_automatas.size(); i++){       
+      if(msg.length()== 0){
+        nodes_printer(lista_automatas[i], _msg);
+      }else if(strcmp(_msg, lista_automatas[i].nombre.c_str())){
+        nodes_printer(lista_automatas[i], _msg);
+        break;
+      }
+    }
+  }else if(strcmp(cmd.c_str(), diccionario[SEND].c_str()) == 0){
+    
+  }else if(strcmp(cmd.c_str(), diccionario[STOP].c_str()) == 0){
+    kill(0,SIGKILL);
+  }
 }
 
+int checkCmd (string str){
+  if(strcmp(str.c_str(), diccionario[INFO].c_str())==0){
+    return 1;
+  }else if(strcmp(str.c_str(), diccionario[SEND].c_str())==0){
+    return 1;
+  }else if(strcmp(str.c_str(), diccionario[STOP].c_str())==0){
+    return 1;
+  }else{    
+    return 0;
+  }
+}
 
 
 void lectorComandos(vector<automata_desc>lista_automatas){  
@@ -202,14 +236,20 @@ void lectorComandos(vector<automata_desc>lista_automatas){
     if (!parser.GetNextDocument (node))
       cerr << "cant parse: \n";
     string cmd,msg;
-    node["cmd"] >> cmd;
-    node["msg"] >> msg;   
-    cout << cmd << ": " << msg << endl;     
+    node[diccionario[CMD]] >> cmd;
+    if(checkCmd(cmd) != 0){
+      node[diccionario[MSG]] >> msg;      
+      sendMsg(lista_automatas, cmd, msg);
+    }else{
+      cout << "command not found" << endl;
+      continue;      
+    }
+    //cout << cmd << ": " << msg << endl;     
   }
 }
 
 void procesoControlador(nodo_automata *nodo, string nombre_automata, vector<string>finales){
-  cout << nombre_automata << ": " << (*nodo).id << endl;  
+  cout << nombre_automata << ": " << (*nodo).id << ", " << getpid() << endl;  
   while(true){
 
   }
@@ -227,16 +267,16 @@ int crearProcesos(vector <nodo_automata> nodos, string nombre_automata, vector <
       nodo++;
     }
   }
+  pid_t p_id;
   for (unsigned i = 0; i < nodos.size(); ++i)
   {
-    pid_t pid;
-    if((pid = fork())== 0){
+    if( ( nodos[i].pid = fork() ) == 0){
       //dentro del hijo
       procesoControlador(&nodos[i], nombre_automata, finales);
       break;
     }else{
       //le asignamos al nodo este id. cada nodo conoce su id asignado
-      nodos[i].pid = pid;
+      //nodos[i].pid = p_id;
     }
   }  
   return nodo;
