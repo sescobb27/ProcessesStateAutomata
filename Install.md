@@ -4,23 +4,23 @@
 
 ### Yaml Installation
 
-     Download: http://pyyaml.org/download/libyaml/yaml-0.1.4.tar.gz
+     Download: ```http://pyyaml.org/download/libyaml/yaml-0.1.4.tar.gz```
 
-     In linux system use: wget http://pyyaml.org/download/libyaml/yaml-0.1.4.tar.gz
+     In linux system use: ```wget http://pyyaml.org/download/libyaml/yaml-0.1.4.tar.gz```
 
      cd yaml directory
 
-     run ./configure
+     run ```./configure```
 
-           make
+           ```make```
 
-           sudo make install
+           ```sudo make install```
 
 ## Atention!!!!!!
 
 ### This software was intended to run on Linux platforms, it wasn't intended to run on other operating systems
 
-# Copyright (c) 2013 Simon Ecobar Benitez
+# Copyright (c) 2013 Simon Escobar Benitez and Mauricio José Ricardo Hoyos
 
 ## MIT License
 
