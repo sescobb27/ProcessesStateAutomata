@@ -4,21 +4,21 @@
 
 ### Yaml Installation
 
-     Download: "http://pyyaml.org/download/libyaml/yaml-0.1.4.tar.gz"
+Download: [yaml.tar.gz](http://pyyaml.org/download/libyaml/yaml-0.1.4.tar.gz)
 
-     In linux system use:
-     ```bash
-     wget http://pyyaml.org/download/libyaml/yaml-0.1.4.tar.gz
-     ```
+In linux system use:
+```bash
+wget http://pyyaml.org/download/libyaml/yaml-0.1.4.tar.gz
+```
 
-     cd yaml directory
+cd yaml directory
 
-     run:
-     ```bash
-     ./configure
-     make
-     sudo make install
-     ```
+run:
+```bash
+./configure
+make
+sudo make install
+```
 
 ## Atention!!!!!!
 
