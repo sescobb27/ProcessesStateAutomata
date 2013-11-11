@@ -8,7 +8,7 @@ Unix library for creating pipes, processes and group processes:
     #include <unistd.h>
 ```
 
-Thread library for handling POSIX thread programming:
+Thread library for handling POSIX thread programming (functions and headers):
 ```c
     #include <pthread.h>
 ```
@@ -31,6 +31,7 @@ C library for asigning memory to data structures, pointers, array of pointers an
     #include <stdlib.h>
 ```
 
+Library which has pid_t and pthread_t data structures for handling proccesses and pthreads:
 ```c
     #include <sys/types.h>
 ```
