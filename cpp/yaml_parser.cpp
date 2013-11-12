@@ -124,8 +124,8 @@ string diccionario[20]={
 };
 
 
-void yamlStringFormater( char *msg, char *recog, char *rest ) {
-  sprintf(msg, MSG_FORMAT, recog, rest );
+void yamlStringFormater( char *msg, string recog, string rest ) {
+  sprintf(msg, MSG_FORMAT, recog.c_str(), rest.c_str() );
 }
 void yamlCodeStringFormater ( int codterm, char *msg, char *recog, char *rest ) {
   sprintf(msg, CODE_MSG_FORMAT, codterm, recog, rest );
@@ -194,9 +194,10 @@ void operator >> (const YAML::Node& node, automata_desc& automata) {
 }
 
 void sendMsg(vector <automata_desc> &lista_automatas, string cmd, string msg){  
-  if(strcmp(cmd.c_str(), diccionario[INFO].c_str()) == 0){
     char *_msg = (char*)malloc(sizeof(char)*MAX_WORD_LENGTH);
-    memset(_msg, '\0', MAX_WORD_LENGTH);   
+    memset(_msg, '\0', MAX_WORD_LENGTH);
+
+  if(strcmp(cmd.c_str(), diccionario[INFO].c_str()) == 0){
     for(unsigned i = 0; i < lista_automatas.size(); i++){       
       if(msg.length()== 0){
         nodes_printer(lista_automatas[i], _msg);
@@ -206,8 +207,17 @@ void sendMsg(vector <automata_desc> &lista_automatas, string cmd, string msg){
       }
     }
   }else if(strcmp(cmd.c_str(), diccionario[SEND].c_str()) == 0){
+    yamlStringFormater(_msg, "", msg);
     for(unsigned i = 0; i < lista_automatas.size(); i++){
-      //lista_automatas[i]
+      vector<nodo_automata> aux= lista_automatas[i].vector_nodos;
+      for(unsigned j = 0; j < aux.size(); j++){
+        if(aux[j].id.compare(lista_automatas[i].estadoinicial) == 0){
+          //es inicial
+          //fd[0] lectura - fd[1] escritura  
+          write(aux[j].fd[1], _msg, strlen(_msg));
+          break;
+        }
+      }
     }
   }else if(strcmp(cmd.c_str(), diccionario[STOP].c_str()) == 0){
     kill(0,SIGKILL);
@@ -252,8 +262,38 @@ void lectorComandos(vector <automata_desc> &lista_automatas){
 }
 
 void procesoControlador(nodo_automata *nodo, string nombre_automata, vector<string>finales){
+  char *buffer = (char *) malloc( sizeof(char) * MAX_WORD_LENGTH);
+  memset(buffer, '\0', MAX_WORD_LENGTH);
+
+  char *_msg = (char *) malloc( sizeof(char) * MAX_WORD_LENGTH);
+  memset(_msg, '\0', MAX_WORD_LENGTH);
+
   cout << nombre_automata << ": " << (*nodo).id << ", " << getpid() << endl;  
   while(true){
+    while(read(nodo->fd[0], buffer,MAX_WORD_LENGTH)>0){
+      _msg[0]='\0';
+      stringstream str(buffer);
+      YAML:: Parser parser(str);
+      YAML:: Node node;      
+      if (!parser.GetNextDocument (node))
+        cerr << "cant parse: \n";
+      string recog, rest;
+      node[diccionario[RECOG]] >> recog;      
+      node[diccionario[REST]] >> rest;
+      if(!rest.empty()){
+        vector<transicion_nodos> aux = nodo->list_transiciones;
+        for(unsigned i=0; i<aux.size(); i++){
+          if(rest.compare(0,aux[i].entrada.length(),aux[i].entrada)==0){
+            recog.append(aux[i].entrada);     
+            rest.erase(0,aux[i].entrada.length()):       
+          }
+          if(!rest.empty()){
+            rest.append("\"\"");
+          }
+          yamlStringFormater(_msg, recog, rest);
+        }
+      }    
+    }
 
   }
 }
@@ -261,12 +301,12 @@ void procesoControlador(nodo_automata *nodo, string nombre_automata, vector<stri
 int crearProcesos(vector<nodo_automata> &nodos, string nombre_automata, vector<string> finales, int nodo){  
 
   for (unsigned i = 0; i < nodos.size(); ++i){
-
+    nodo_automata *temp = &nodos[i];
     if(pipe(fd_padre[nodo])==-1){
       //hubo error.
       cout << "Error creando pipes en crear Procesos " << endl;
     }else{
-      nodos[i].fd = fd_padre[nodo];
+      temp->fd = fd_padre[nodo];
       nodo++;
     }
   }
