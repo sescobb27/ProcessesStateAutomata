@@ -99,6 +99,7 @@ struct automata_desc{
 //matriz de enteros.
 int **fd_padre;
 
+
 //diccionario de TAGS en el archivo yaml
 string diccionario[20]={
   "automata",
@@ -192,7 +193,7 @@ void operator >> (const YAML::Node& node, automata_desc& automata) {
   }
 }
 
-void sendMsg(vector<automata_desc>lista_automatas, string cmd, string msg){  
+void sendMsg(vector <automata_desc> &lista_automatas, string cmd, string msg){  
   if(strcmp(cmd.c_str(), diccionario[INFO].c_str()) == 0){
     char *_msg = (char*)malloc(sizeof(char)*MAX_WORD_LENGTH);
     memset(_msg, '\0', MAX_WORD_LENGTH);   
@@ -205,7 +206,9 @@ void sendMsg(vector<automata_desc>lista_automatas, string cmd, string msg){
       }
     }
   }else if(strcmp(cmd.c_str(), diccionario[SEND].c_str()) == 0){
-    
+    for(unsigned i = 0; i < lista_automatas.size(); i++){
+      //lista_automatas[i]
+    }
   }else if(strcmp(cmd.c_str(), diccionario[STOP].c_str()) == 0){
     kill(0,SIGKILL);
   }
@@ -224,7 +227,7 @@ int checkCmd (string str){
 }
 
 
-void lectorComandos(vector<automata_desc>lista_automatas){  
+void lectorComandos(vector <automata_desc> &lista_automatas){  
   string aux;
   //leemos comando.
   while(true){    
@@ -255,7 +258,7 @@ void procesoControlador(nodo_automata *nodo, string nombre_automata, vector<stri
   }
 }
 
-int crearProcesos(vector <nodo_automata> nodos, string nombre_automata, vector <string> finales, int nodo){  
+int crearProcesos(vector<nodo_automata> &nodos, string nombre_automata, vector<string> finales, int nodo){  
 
   for (unsigned i = 0; i < nodos.size(); ++i){
 
@@ -267,31 +270,32 @@ int crearProcesos(vector <nodo_automata> nodos, string nombre_automata, vector <
       nodo++;
     }
   }
-  pid_t p_id;
+  pid_t p_id;    
   for (unsigned i = 0; i < nodos.size(); ++i)
   {
-    if( ( nodos[i].pid = fork() ) == 0){
+    nodo_automata *temp = &nodos[i];
+    if( (p_id = fork() ) == 0){
       //dentro del hijo
-      procesoControlador(&nodos[i], nombre_automata, finales);
+      procesoControlador(temp, nombre_automata, finales);
       break;
     }else{
       //le asignamos al nodo este id. cada nodo conoce su id asignado
-      //nodos[i].pid = p_id;
+      temp->pid=p_id;
     }
   }  
   return nodo;
 }
 
-void crearHijos (vector <automata_desc> lista_automatas){
+void crearHijos (vector <automata_desc> &lista_automatas){
   int nodo = 0;
   fd_padre = (int**) malloc(MAX_AUTOMATAS*sizeof(int*));
   for(unsigned i = 0; i < MAX_AUTOMATAS; i++){
     fd_padre[i] = (int*) malloc(sizeof(int)*2);
   }
   for(unsigned i = 0; i < lista_automatas.size(); i++){
-    automata_desc automata;
-    automata = lista_automatas[i];
-    nodo = crearProcesos(automata.vector_nodos, automata.nombre, automata.final, nodo);    
+    automata_desc *automata;
+    automata = &lista_automatas[i];
+    nodo = crearProcesos(automata->vector_nodos, automata->nombre, automata->final, nodo);    
   }
   lectorComandos(lista_automatas);
 }
@@ -308,7 +312,7 @@ int main(int argc, char const *argv[]){
   YAML:: Parser parser(yaml_file);
   YAML:: Node node;
   parser.GetNextDocument(node);
-  vector <automata_desc> automatas;
+  vector <automata_desc> lista_automatas;
   for(unsigned i = 0; i < node.size(); i++){
     automata_desc automata;
     automata.pipe_to_father= (int*)malloc(sizeof(int)*2);
@@ -318,7 +322,8 @@ int main(int argc, char const *argv[]){
     }
     node[i] >> automata;
     //en cada posición del arreglo va a tener un arreglo de dos posiciones.
-    automatas.push_back(automata);    
+
+    lista_automatas.push_back(automata);    
     /*
     cout << "Nombre Automata: " << automata.nombre << endl;
     cout << "descripcion Automata: "<< automata.descripcion << endl;
@@ -337,6 +342,6 @@ int main(int argc, char const *argv[]){
     }
     */
   } 
-  crearHijos(automatas);  
+  crearHijos(lista_automatas);  
   return SYSTEM_SUCCESS;
 }
