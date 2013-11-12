@@ -61,6 +61,7 @@ enum tags {
 };
 
 //ESTRUCTURAS
+struct automata_desc;
 
 
 /*
@@ -77,7 +78,8 @@ struct nodo_automata{
     string id;
     pid_t pid;
     int *fd;
-    int *pipe_to_father;    
+    int *pipe_to_father;  
+    automata_desc* automata;  
     vector<transicion_nodos> list_transiciones;
 
 };
@@ -127,8 +129,8 @@ string diccionario[20]={
 void yamlStringFormater( char *msg, string recog, string rest ) {
   sprintf(msg, MSG_FORMAT, recog.c_str(), rest.c_str() );
 }
-void yamlCodeStringFormater ( int codterm, char *msg, char *recog, char *rest ) {
-  sprintf(msg, CODE_MSG_FORMAT, codterm, recog, rest );
+void yamlCodeStringFormater ( int codterm, char *msg, string recog, string rest ) {
+  sprintf(msg, CODE_MSG_FORMAT, codterm, recog.c_str(), rest.c_str());
 }
 
 void yamlInfoNode( char *info, const char *id, int ppid ) {
@@ -189,6 +191,7 @@ void operator >> (const YAML::Node& node, automata_desc& automata) {
     nodo_automata nodoAutomata;
     list_nodos[j] >> nodoAutomata;
     nodoAutomata.pipe_to_father = automata.pipe_to_father;
+    nodoAutomata.automata = &automata;
     automata.vector_nodos.push_back(nodoAutomata);
   }
 }
@@ -267,11 +270,14 @@ void procesoControlador(nodo_automata *nodo, string nombre_automata, vector<stri
 
   char *_msg = (char *) malloc( sizeof(char) * MAX_WORD_LENGTH);
   memset(_msg, '\0', MAX_WORD_LENGTH);
+  int send = 0, check = 0;
 
   cout << nombre_automata << ": " << (*nodo).id << ", " << getpid() << endl;  
   while(true){
     while(read(nodo->fd[0], buffer,MAX_WORD_LENGTH)>0){
       _msg[0]='\0';
+      send = 0;
+      check = 0;
       stringstream str(buffer);
       YAML:: Parser parser(str);
       YAML:: Node node;      
@@ -285,13 +291,35 @@ void procesoControlador(nodo_automata *nodo, string nombre_automata, vector<stri
         for(unsigned i=0; i<aux.size(); i++){
           if(rest.compare(0,aux[i].entrada.length(),aux[i].entrada)==0){
             recog.append(aux[i].entrada);     
-            rest.erase(0,aux[i].entrada.length()):       
+            rest.erase(0,aux[i].entrada.length());                 
+            if(!rest.empty()){
+              rest.append("\"\"");
+            }
+            yamlStringFormater(_msg, recog, rest);
+            vector<nodo_automata> hermanos= nodo->automata->vector_nodos;
+            for(unsigned j =0; j<hermanos.size(); j++){
+              if(hermanos[j].id.compare(aux[i].sig_estado)==0){
+                write(hermanos[j].fd[1], _msg, strlen(_msg));
+                send=1;
+                break;
+              }
+            }
+            break;
           }
-          if(!rest.empty()){
-            rest.append("\"\"");
-          }
-          yamlStringFormater(_msg, recog, rest);
         }
+      }
+      if(!send){
+        for(unsigned k=0; k<finales.size();k++){
+          if(nodo->id.compare(finales[k])==0 && rest.length() ==0){
+            yamlCodeStringFormater(0, _msg, recog, rest);
+            check = 1;
+            break;
+          }
+        }
+        if(!check){
+          yamlCodeStringFormater(1, _msg, recog, rest);
+        }
+        write(nodo->pipe_to_father[1], _msg, strlen(_msg));
       }    
     }
 
