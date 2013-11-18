@@ -24,8 +24,8 @@
 #define MAX_AUTOMATAS 20
 
   // FORMATS
-#define MSG_FORMAT "{ recog: %s, rest: %s }"
-#define CODE_MSG_FORMAT "{ codterm: %d, recog: %s, rest: %s }"
+#define MSG_FORMAT "{ recog: \"%s\", rest: \"%s\" }"
+#define CODE_MSG_FORMAT "{ codterm: %d, recog: \"%s\", rest: \"%s\" }"
 #define INFO_FORMAT       "- msgtype: info\n  info:\n    - automata: %s\n      ppid: %d\n"
 #define ACCEPT_FORMAT   "- msgtype: accept\n  accept:\n     - automata: %s\n       msg: %s\n"
 #define REJECT_FORMAT    "- msgtype: reject\n  reject:\n     - automata: %s\n       msg: %s\n       pos: %d\n"
@@ -61,7 +61,6 @@ enum tags {
 };
 
 //ESTRUCTURAS
-struct automata_desc;
 
 
 /*
@@ -78,8 +77,7 @@ struct nodo_automata{
     string id;
     pid_t pid;
     int *fd;
-    int *pipe_to_father;  
-    automata_desc* automata;  
+    int *pipe_to_father;      
     vector<transicion_nodos> list_transiciones;
 
 };
@@ -95,7 +93,8 @@ struct automata_desc{
     string estadoinicial;
     vector<string> final;
     vector<nodo_automata> vector_nodos;
-    int *pipe_to_father;    
+    int *pipe_to_father; 
+    pthread_t hilo_lectura;   
 };
 
 //matriz de enteros.
@@ -191,7 +190,9 @@ void operator >> (const YAML::Node& node, automata_desc& automata) {
     nodo_automata nodoAutomata;
     list_nodos[j] >> nodoAutomata;
     nodoAutomata.pipe_to_father = automata.pipe_to_father;
-    nodoAutomata.automata = &automata;
+    //nodoAutomata.automata= (automata_desc*) malloc(sizeof(automata));
+    //memcpy(nodoAutomata.automata, (void*)&automata, sizeof(automata));
+    //nodoAutomata.automata = &automata;
     automata.vector_nodos.push_back(nodoAutomata);
   }
 }
@@ -204,7 +205,7 @@ void sendMsg(vector <automata_desc> &lista_automatas, string cmd, string msg){
     for(unsigned i = 0; i < lista_automatas.size(); i++){       
       if(msg.length()== 0){
         nodes_printer(lista_automatas[i], _msg);
-      }else if(strcmp(_msg, lista_automatas[i].nombre.c_str())){
+      }else if(strcmp(msg.c_str(), lista_automatas[i].nombre.c_str())== 0){
         nodes_printer(lista_automatas[i], _msg);
         break;
       }
@@ -264,15 +265,14 @@ void lectorComandos(vector <automata_desc> &lista_automatas){
   }
 }
 
-void procesoControlador(nodo_automata *nodo, string nombre_automata, vector<string>finales){
+void procesoControlador(nodo_automata *nodo, vector<nodo_automata> &hermanos, vector<string>finales){
   char *buffer = (char *) malloc( sizeof(char) * MAX_WORD_LENGTH);
   memset(buffer, '\0', MAX_WORD_LENGTH);
 
   char *_msg = (char *) malloc( sizeof(char) * MAX_WORD_LENGTH);
   memset(_msg, '\0', MAX_WORD_LENGTH);
   int send = 0, check = 0;
-
-  cout << nombre_automata << ": " << (*nodo).id << ", " << getpid() << endl;  
+  //cout << "nombre del automata: " << nodo->automata->nombre << endl;
   while(true){
     while(read(nodo->fd[0], buffer,MAX_WORD_LENGTH)>0){
       _msg[0]='\0';
@@ -286,19 +286,20 @@ void procesoControlador(nodo_automata *nodo, string nombre_automata, vector<stri
       string recog, rest;
       node[diccionario[RECOG]] >> recog;      
       node[diccionario[REST]] >> rest;
+      cout  << (*nodo).id << ": " << buffer << endl;  
       if(!rest.empty()){
         vector<transicion_nodos> aux = nodo->list_transiciones;
         for(unsigned i=0; i<aux.size(); i++){
           if(rest.compare(0,aux[i].entrada.length(),aux[i].entrada)==0){
             recog.append(aux[i].entrada);     
             rest.erase(0,aux[i].entrada.length());                 
-            if(!rest.empty()){
+            if(rest.empty()){
               rest.append("\"\"");
             }
-            yamlStringFormater(_msg, recog, rest);
-            vector<nodo_automata> hermanos= nodo->automata->vector_nodos;
+            yamlStringFormater(_msg, recog, rest);            
             for(unsigned j =0; j<hermanos.size(); j++){
-              if(hermanos[j].id.compare(aux[i].sig_estado)==0){
+              if((hermanos[j].id.compare(aux[i].sig_estado))==0){
+                cout << "enviando a: " << hermanos[j].id << endl;
                 write(hermanos[j].fd[1], _msg, strlen(_msg));
                 send=1;
                 break;
@@ -326,7 +327,7 @@ void procesoControlador(nodo_automata *nodo, string nombre_automata, vector<stri
   }
 }
 
-int crearProcesos(vector<nodo_automata> &nodos, string nombre_automata, vector<string> finales, int nodo){  
+int crearProcesos(vector<nodo_automata> &nodos, vector<string> finales, int nodo){  
 
   for (unsigned i = 0; i < nodos.size(); ++i){
     nodo_automata *temp = &nodos[i];
@@ -344,7 +345,7 @@ int crearProcesos(vector<nodo_automata> &nodos, string nombre_automata, vector<s
     nodo_automata *temp = &nodos[i];
     if( (p_id = fork() ) == 0){
       //dentro del hijo
-      procesoControlador(temp, nombre_automata, finales);
+      procesoControlador(temp, nodos, finales);
       break;
     }else{
       //le asignamos al nodo este id. cada nodo conoce su id asignado
@@ -354,16 +355,22 @@ int crearProcesos(vector<nodo_automata> &nodos, string nombre_automata, vector<s
   return nodo;
 }
 
+void* readingThreadController(void* args){
+  automata_desc *pautomata = (*automata)args;
+  
+}
+
 void crearHijos (vector <automata_desc> &lista_automatas){
   int nodo = 0;
   fd_padre = (int**) malloc(MAX_AUTOMATAS*sizeof(int*));
-  for(unsigned i = 0; i < MAX_AUTOMATAS; i++){
+  for(unsigned i = 0; i < MAX_AUTOMATAS; i++){    
     fd_padre[i] = (int*) malloc(sizeof(int)*2);
   }
-  for(unsigned i = 0; i < lista_automatas.size(); i++){
+  for(unsigned i = 0; i < lista_automatas.size(); i++){    
     automata_desc *automata;
     automata = &lista_automatas[i];
-    nodo = crearProcesos(automata->vector_nodos, automata->nombre, automata->final, nodo);    
+    pthread_create(&automata->hilo_lectura,NULL, readingThreadController,(void*)automata);
+    nodo = crearProcesos(automata->vector_nodos, automata->final, nodo);    
   }
   lectorComandos(lista_automatas);
 }
