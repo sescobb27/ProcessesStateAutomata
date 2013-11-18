@@ -14,10 +14,10 @@
   // FORMATS
 #define MSG_FORMAT "{ recog: %s, rest: %s }"
 #define CODE_MSG_FORMAT "{ codterm: %d, recog: %s, rest: %s }"
-#define INFO_FORMAT       "- msgtype: info\n  info:\n    - automata: %s\n      ppid: %d\n"
+#define INFO_FORMAT       "- msgtype: info\n  info:\n    - automata: %s\n      ppid: %d\n      nodes:\n"
 #define ACCEPT_FORMAT   "- msgtype: accept\n  accept:\n     - automata: %s\n       msg: %s\n"
 #define REJECT_FORMAT    "- msgtype: reject\n  reject:\n     - automata: %s\n       msg: %s\n       pos: %d\n"
-#define ERROR_FORMAT    "- msgtype: error\n  error:\n    - where: \"%s\"\n      cause: \"%s\"\n"
+#define ERROR_FORMAT    "- msgtype: error\n  error:\n  - where: \"%s\"\n    cause: \"%s\"\n"
 #define NODE_MSG_FORMAT "      - node: %s\n        pid: %d\n"
 
 struct transicion_nodos {
