@@ -293,9 +293,11 @@ void procesoControlador(nodo_automata *nodo, vector<nodo_automata> &hermanos, ve
           if(rest.compare(0,aux[i].entrada.length(),aux[i].entrada)==0){
             recog.append(aux[i].entrada);     
             rest.erase(0,aux[i].entrada.length());                 
+            /*
             if(rest.empty()){
               rest.append("\"\"");
             }
+            */
             yamlStringFormater(_msg, recog, rest);            
             for(unsigned j =0; j<hermanos.size(); j++){
               if((hermanos[j].id.compare(aux[i].sig_estado))==0){
@@ -355,9 +357,34 @@ int crearProcesos(vector<nodo_automata> &nodos, vector<string> finales, int nodo
   return nodo;
 }
 
-void* readingThreadController(void* args){
-  automata_desc *pautomata = (*automata)args;
+void* readingThreadController(void *args){
+  automata_desc *pautomata = (automata_desc*)args;
+  char *buffer = (char *) malloc( sizeof(char) * MAX_WORD_LENGTH);
+  memset(buffer, '\0', MAX_WORD_LENGTH);
   
+  //cout << "nombre del automata: " << nodo->automata->nombre << endl;
+  while(true){
+    while(read(pautomata->pipe_to_father[0], buffer,MAX_WORD_LENGTH)>0){      
+      stringstream str(buffer);
+      YAML:: Parser parser(str);
+      YAML:: Node node;      
+      if (!parser.GetNextDocument (node))
+        cerr << "cant parse: \n";
+      string recog, rest;
+      int codterm;
+      node[diccionario[CODTERM]] >> codterm;      
+      node[diccionario[RECOG]] >> recog;    
+      if(codterm == 0){
+        printAcceptMsg(pautomata->nombre, recog);
+        break;
+      }  
+      node[diccionario[REST]] >> rest;
+      if(codterm == 1){
+        printRejectMsg(pautomata->nombre, recog+rest, recog.length()+1);
+        break;
+      }
+    }
+  }    
 }
 
 void crearHijos (vector <automata_desc> &lista_automatas){
@@ -369,7 +396,7 @@ void crearHijos (vector <automata_desc> &lista_automatas){
   for(unsigned i = 0; i < lista_automatas.size(); i++){    
     automata_desc *automata;
     automata = &lista_automatas[i];
-    pthread_create(&automata->hilo_lectura,NULL, readingThreadController,(void*)automata);
+    pthread_create(&automata->hilo_lectura,NULL, readingThreadController,(void *)automata);
     nodo = crearProcesos(automata->vector_nodos, automata->final, nodo);    
   }
   lectorComandos(lista_automatas);
