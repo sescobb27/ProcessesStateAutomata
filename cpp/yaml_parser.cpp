@@ -26,7 +26,7 @@
   // FORMATS
 #define MSG_FORMAT "{ recog: \"%s\", rest: \"%s\" }"
 #define CODE_MSG_FORMAT "{ codterm: %d, recog: \"%s\", rest: \"%s\" }"
-#define INFO_FORMAT       "- msgtype: info\n  info:\n    - automata: %s\n      ppid: %d\n"
+#define INFO_FORMAT       "- msgtype: info\n  info:\n    - automata: %s\n      ppid: %d\n      nodes:\n"
 #define ACCEPT_FORMAT   "- msgtype: accept\n  accept:\n     - automata: %s\n       msg: %s\n"
 #define REJECT_FORMAT    "- msgtype: reject\n  reject:\n     - automata: %s\n       msg: %s\n       pos: %d\n"
 #define ERROR_FORMAT    "- msgtype: error\n  error:\n    - where: \"%s\"\n      cause: \"%s\"\n"
@@ -190,9 +190,6 @@ void operator >> (const YAML::Node& node, automata_desc& automata) {
     nodo_automata nodoAutomata;
     list_nodos[j] >> nodoAutomata;
     nodoAutomata.pipe_to_father = automata.pipe_to_father;
-    //nodoAutomata.automata= (automata_desc*) malloc(sizeof(automata));
-    //memcpy(nodoAutomata.automata, (void*)&automata, sizeof(automata));
-    //nodoAutomata.automata = &automata;
     automata.vector_nodos.push_back(nodoAutomata);
   }
 }
@@ -245,23 +242,25 @@ void lectorComandos(vector <automata_desc> &lista_automatas){
   string aux;
   //leemos comando.
   while(true){    
-    getline(cin,aux);    
-    stringstream str(aux);
-   
-    YAML:: Parser parser(str);
-    YAML:: Node node;      
-    if (!parser.GetNextDocument (node))
-      cerr << "cant parse: \n";
-    string cmd,msg;
-    node[diccionario[CMD]] >> cmd;
-    if(checkCmd(cmd) != 0){
-      node[diccionario[MSG]] >> msg;      
-      sendMsg(lista_automatas, cmd, msg);
-    }else{
-      cout << "command not found" << endl;
-      continue;      
-    }
-    //cout << cmd << ": " << msg << endl;     
+    try{
+      getline(cin,aux);    
+      stringstream str(aux);     
+      YAML:: Parser parser(str);
+      YAML:: Node node; 
+      if (!parser.GetNextDocument (node))
+        printErrorMsg("lectorComandos", "Error creando parser");
+      string cmd,msg;
+      node[diccionario[CMD]] >> cmd;
+      if(checkCmd(cmd) != 0){
+        node[diccionario[MSG]] >> msg;      
+        sendMsg(lista_automatas, cmd, msg);
+      }else{
+        printErrorMsg("lectorComandos", "Comando no encontrado");
+        continue;      
+      }
+    }catch(YAML::Exception& e){
+      printErrorMsg("lectorComandos", e.what());
+    }           
   }
 }
 
@@ -282,26 +281,19 @@ void procesoControlador(nodo_automata *nodo, vector<nodo_automata> &hermanos, ve
       YAML:: Parser parser(str);
       YAML:: Node node;      
       if (!parser.GetNextDocument (node))
-        cerr << "cant parse: \n";
+        printErrorMsg("procesoControlador", "Error creando parser");
       string recog, rest;
       node[diccionario[RECOG]] >> recog;      
-      node[diccionario[REST]] >> rest;
-      cout  << (*nodo).id << ": " << buffer << endl;  
+      node[diccionario[REST]] >> rest;      
       if(!rest.empty()){
         vector<transicion_nodos> aux = nodo->list_transiciones;
         for(unsigned i=0; i<aux.size(); i++){
           if(rest.compare(0,aux[i].entrada.length(),aux[i].entrada)==0){
             recog.append(aux[i].entrada);     
-            rest.erase(0,aux[i].entrada.length());                 
-            /*
-            if(rest.empty()){
-              rest.append("\"\"");
-            }
-            */
+            rest.erase(0,aux[i].entrada.length());                          
             yamlStringFormater(_msg, recog, rest);            
             for(unsigned j =0; j<hermanos.size(); j++){
-              if((hermanos[j].id.compare(aux[i].sig_estado))==0){
-                cout << "enviando a: " << hermanos[j].id << endl;
+              if((hermanos[j].id.compare(aux[i].sig_estado))==0){                
                 write(hermanos[j].fd[1], _msg, strlen(_msg));
                 send=1;
                 break;
@@ -334,8 +326,8 @@ int crearProcesos(vector<nodo_automata> &nodos, vector<string> finales, int nodo
   for (unsigned i = 0; i < nodos.size(); ++i){
     nodo_automata *temp = &nodos[i];
     if(pipe(fd_padre[nodo])==-1){
-      //hubo error.
-      cout << "Error creando pipes en crear Procesos " << endl;
+      //hubo error.      
+      printErrorMsg("Crear Procesos", "No se pudieron crear los PIPES");
     }else{
       temp->fd = fd_padre[nodo];
       nodo++;
@@ -369,7 +361,7 @@ void* readingThreadController(void *args){
       YAML:: Parser parser(str);
       YAML:: Node node;      
       if (!parser.GetNextDocument (node))
-        cerr << "cant parse: \n";
+        printErrorMsg("readingThreadController", "Error creando parser");
       string recog, rest;
       int codterm;
       node[diccionario[CODTERM]] >> codterm;      
@@ -405,45 +397,32 @@ void crearHijos (vector <automata_desc> &lista_automatas){
 int main(int argc, char const *argv[]){
 //creamos el grupo de procesos.
   setpgid(getpid(), getpid());  
-  if ( argc < 2 ){
-    fprintf(stdout, "There is no file to parse, try again\n");
+  if ( argc < 2 ){    
+    printErrorMsg("Main", "Error, no hay archivo.");
     return SYSTEM_ERROR;
   }
   // Parseando el Yaml
-  ifstream yaml_file(argv[1]);
-  YAML:: Parser parser(yaml_file);
-  YAML:: Node node;
-  parser.GetNextDocument(node);
-  vector <automata_desc> lista_automatas;
-  for(unsigned i = 0; i < node.size(); i++){
-    automata_desc automata;
-    automata.pipe_to_father= (int*)malloc(sizeof(int)*2);
-    if(pipe(automata.pipe_to_father)== -1){
-      //Hubo un error.
-      cout << "Error creando Pipe" << endl;
-    }
-    node[i] >> automata;
-    //en cada posición del arreglo va a tener un arreglo de dos posiciones.
-
-    lista_automatas.push_back(automata);    
-    /*
-    cout << "Nombre Automata: " << automata.nombre << endl;
-    cout << "descripcion Automata: "<< automata.descripcion << endl;
-    for(unsigned k = 0; k < automata.alfabeto.size(); k++){
-      cout << "Alfabeto Automata: "<< automata.alfabeto[k] << endl;
-    }
-    for(unsigned k = 0; k < automata.estados.size(); k++){
-      cout << "Estado Automata: "<< automata.estados[k] << endl;
-    }
-    cout << "Start Automata: "<< automata.estadoinicial << endl;
-    for(unsigned k = 0; k < automata.final.size(); k++){
-      cout << "Final Automata: "<< automata.final[k] << endl;
-    }     
-    for(unsigned k = 0; k < automata.vector_nodos.size(); k++){
-      cout << "Nodo Automata: "<< automata.vector_nodos[k].id << endl;
-    }
-    */
+  try{
+    ifstream yaml_file(argv[1]);
+    YAML:: Parser parser(yaml_file);
+    YAML:: Node node;
+    parser.GetNextDocument(node);
+  
+    vector <automata_desc> lista_automatas;
+    for(unsigned i = 0; i < node.size(); i++){
+      automata_desc automata;
+      automata.pipe_to_father= (int*)malloc(sizeof(int)*2);
+      if(pipe(automata.pipe_to_father)== -1){
+        //Hubo un error.
+        printErrorMsg("Main", "Error creando el PIPE al padre");
+      }
+      node[i] >> automata;
+      //en cada posición del arreglo va a tener un arreglo de dos posiciones.
+      lista_automatas.push_back(automata);    
+    } 
+    crearHijos(lista_automatas); 
+  }catch(YAML::Exception& e){
+    printErrorMsg("Main", e.what());
   } 
-  crearHijos(lista_automatas);  
   return SYSTEM_SUCCESS;
 }
