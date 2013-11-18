@@ -1,14 +1,11 @@
 #include "yaml-cpp/yaml.h"
 #include <stdio.h>
-#include <errno.h>
 #include <sys/types.h>
 #include <iostream>
 #include <fstream>
-#include <sys/wait.h>
 #include <signal.h>
 #include <string.h>
-#include <vector>
-#include <stdlib.h>
+
 
 #include "automata.h"
 
@@ -115,16 +112,16 @@ void sendMsg(vector <automata_desc> &lista_automatas, string cmd, string msg){
     char *_msg = (char*)malloc(sizeof(char)*MAX_WORD_LENGTH);
     memset(_msg, '\0', MAX_WORD_LENGTH);
 
-  if(strcmp(cmd.c_str(), diccionario[INFO].c_str()) == 0){
+  if(cmd.compare(diccionario[INFO]) == 0){
     for(unsigned i = 0; i < lista_automatas.size(); i++){       
       if(msg.length()== 0){
         nodes_printer(lista_automatas[i], _msg);
-      }else if(strcmp(msg.c_str(), lista_automatas[i].nombre.c_str())== 0){
+      }else if(msg.compare(lista_automatas[i].nombre)== 0){
         nodes_printer(lista_automatas[i], _msg);
         break;
       }
     }
-  }else if(strcmp(cmd.c_str(), diccionario[SEND].c_str()) == 0){
+  }else if(cmd.compare(diccionario[SEND]) == 0){
     yamlStringFormater(_msg, "", msg);
     for(unsigned i = 0; i < lista_automatas.size(); i++){
       vector<nodo_automata> aux= lista_automatas[i].vector_nodos;
@@ -137,17 +134,17 @@ void sendMsg(vector <automata_desc> &lista_automatas, string cmd, string msg){
         }
       }
     }
-  }else if(strcmp(cmd.c_str(), diccionario[STOP].c_str()) == 0){
+  }else if(cmd.compare(diccionario[STOP]) == 0){
     kill(0,SIGKILL);
   }
 }
 
 int checkCmd (string str){
-  if(strcmp(str.c_str(), diccionario[INFO].c_str())==0){
+  if(str.compare(diccionario[INFO])==0){
     return 1;
-  }else if(strcmp(str.c_str(), diccionario[SEND].c_str())==0){
+  }else if(str.compare(diccionario[SEND])==0){
     return 1;
-  }else if(strcmp(str.c_str(), diccionario[STOP].c_str())==0){
+  }else if(str.compare(diccionario[STOP])==0){
     return 1;
   }else{    
     return 0;
@@ -177,6 +174,7 @@ void lectorComandos(vector <automata_desc> &lista_automatas){
       }
     }catch(YAML::Exception& e){
       printErrorMsg("lectorComandos", e.what());
+      continue;
     }           
   }
 }
@@ -189,52 +187,56 @@ void procesoControlador(nodo_automata *nodo, vector<nodo_automata> &hermanos, ve
   memset(_msg, '\0', MAX_WORD_LENGTH);
   int send = 0, check = 0;
   //cout << "nombre del automata: " << nodo->automata->nombre << endl;
-  while(true){
+  while(true){    
     while(read(nodo->fd[0], buffer,MAX_WORD_LENGTH)>0){
+
       _msg[0]='\0';
       send = 0;
       check = 0;
-      stringstream str(buffer);
-      YAML:: Parser parser(str);
-      YAML:: Node node;      
-      if (!parser.GetNextDocument (node))
-        printErrorMsg("procesoControlador", "Error creando parser");
-      string recog, rest;
-      node[diccionario[RECOG]] >> recog;      
-      node[diccionario[REST]] >> rest;      
-      if(!rest.empty()){
-        vector<transicion_nodos> aux = nodo->list_transiciones;
-        for(unsigned i=0; i<aux.size(); i++){
-          if(rest.compare(0,aux[i].entrada.length(),aux[i].entrada)==0){
-            recog.append(aux[i].entrada);     
-            rest.erase(0,aux[i].entrada.length());                          
-            yamlStringFormater(_msg, recog, rest);            
-            for(unsigned j =0; j<hermanos.size(); j++){
-              if((hermanos[j].id.compare(aux[i].sig_estado))==0){                
-                write(hermanos[j].fd[1], _msg, strlen(_msg));
-                send=1;
-                break;
+      try{
+        stringstream str(buffer);
+        YAML:: Parser parser(str);
+        YAML:: Node node;      
+        if (!parser.GetNextDocument (node))
+          printErrorMsg("procesoControlador", "Error creando parser");
+        string recog, rest;
+        node[diccionario[RECOG]] >> recog;      
+        node[diccionario[REST]] >> rest;      
+        if(!rest.empty()){
+          vector<transicion_nodos> aux = nodo->list_transiciones;
+          for(unsigned i=0; i<aux.size(); i++){
+            if(rest.compare(0,aux[i].entrada.length(),aux[i].entrada)==0){
+              recog.append(aux[i].entrada);     
+              rest.erase(0,aux[i].entrada.length());                          
+              yamlStringFormater(_msg, recog, rest);            
+              for(unsigned j =0; j<hermanos.size(); j++){
+                if((hermanos[j].id.compare(aux[i].sig_estado))==0){                
+                  write(hermanos[j].fd[1], _msg, strlen(_msg));
+                  send=1;
+                  break;
+                }
               }
+              break;
             }
-            break;
           }
         }
-      }
-      if(!send){
-        for(unsigned k=0; k<finales.size();k++){
-          if(nodo->id.compare(finales[k])==0 && rest.length() ==0){
-            yamlCodeStringFormater(0, _msg, recog, rest);
-            check = 1;
-            break;
+        if(!send){
+          for(unsigned k=0; k<finales.size();k++){
+            if(nodo->id.compare(finales[k])==0 && rest.length() ==0){
+              yamlCodeStringFormater(0, _msg, recog, rest);
+              check = 1;
+              break;
+            }
           }
+          if(!check){
+            yamlCodeStringFormater(1, _msg, recog, rest);
+          }
+          write(nodo->pipe_to_father[1], _msg, strlen(_msg));
         }
-        if(!check){
-          yamlCodeStringFormater(1, _msg, recog, rest);
+        }catch(YAML::Exception& e){
+          printErrorMsg("Main", e.what());          
         }
-        write(nodo->pipe_to_father[1], _msg, strlen(_msg));
-      }    
     }
-
   }
 }
 
