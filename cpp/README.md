@@ -62,3 +62,9 @@ This header file defines several functions to manipulate C strings and arrays.
 ```c++
 	#include <string.h>
 ```
+
+Vector is a sequence container that encapsulates dynamic size arrays.
+
+```c++
+	#include <vector>
+```
