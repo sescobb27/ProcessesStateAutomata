@@ -1,5 +1,8 @@
 # Process Automata
 
+## Thx to: Professor [Juan Francisco Cardona Mc](https://github.com/jfcmacro)
+### Subject: Operating Systems
+
 ## Used libraries
 
 Unix library for creating pipes, processes and group processes:
